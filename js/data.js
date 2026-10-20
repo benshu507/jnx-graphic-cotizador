@@ -1,15 +1,48 @@
 const DEFAULT_PRODUCTS = [
-  { id: 'tshirt_algodon', name: 'T-Shirt Algodón Clásico', blankCost: 2.75, pressCost: 0.65 },
-  { id: 'tshirt_dryfit', name: 'T-Shirt Dry-Fit / Poli-Algodón (Sublimable)', blankCost: 3.00, pressCost: 0.70 },
-  { id: 'polo_dryfit', name: 'Suéter Tipo Polo (Dry-Fit / Piqué)', blankCost: 5.50, pressCost: 0.80 },
-  { id: 'abrigo_hoodie', name: 'Abrigo / Hoodie Personalizado', blankCost: 9.50, pressCost: 1.00 },
-  { id: 'gorra', name: 'Gorra (Trucker / Plana / Clásica)', blankCost: 2.25, pressCost: 0.60 },
-  { id: 'taza_11oz', name: 'Taza Cerámica 11oz', blankCost: 1.35, pressCost: 0.55 },
-  { id: 'termo_tumbler', name: 'Termo / Vaso Acero Inoxidable', blankCost: 4.50, pressCost: 0.75 },
-  { id: 'libreta_b6', name: 'Libreta Corporativa / B6', blankCost: 1.85, pressCost: 0.50 },
-  { id: 'bolso_tote', name: 'Bolso Tote Bag / Mochila Sublimable', blankCost: 1.90, pressCost: 0.60 },
-  { id: 'prenda_cliente', name: 'Prenda traída por el Cliente (Solo Servicio)', blankCost: 0.00, pressCost: 1.00 },
-  { id: 'banner', name: 'Banner / Lona Publicitaria (Gran Formato)', blankCost: 0.00, pressCost: 1.50 }
+  {
+    id: 'tshirt_algodon', name: 'T-Shirt Algodón Clásico', blankCost: 2.75, pressCost: 0.65,
+    allowedTechniques: ['dtf', 'bordado']
+  },
+  {
+    id: 'tshirt_dryfit', name: 'T-Shirt Dry-Fit / Poli-Algodón (Sublimable)', blankCost: 3.00, pressCost: 0.70,
+    allowedTechniques: ['sublimacion_parcial', 'sublimacion_full', 'dtf', 'bordado']
+  },
+  {
+    id: 'polo_dryfit', name: 'Suéter Tipo Polo (Dry-Fit / Piqué)', blankCost: 5.50, pressCost: 0.80,
+    allowedTechniques: ['bordado', 'dtf', 'sublimacion_parcial']
+  },
+  {
+    id: 'abrigo_hoodie', name: 'Abrigo / Hoodie Personalizado', blankCost: 9.50, pressCost: 1.00,
+    allowedTechniques: ['dtf', 'bordado']
+  },
+  {
+    id: 'gorra', name: 'Gorra (Trucker / Plana / Clásica)', blankCost: 2.25, pressCost: 0.60,
+    allowedTechniques: ['dtf', 'bordado', 'sublimacion_parcial']
+  },
+  {
+    id: 'taza_11oz', name: 'Taza Cerámica 11oz', blankCost: 1.35, pressCost: 0.55,
+    allowedTechniques: ['sublimacion_parcial', 'dtf_uv']
+  },
+  {
+    id: 'termo_tumbler', name: 'Termo / Vaso Acero Inoxidable', blankCost: 4.50, pressCost: 0.75,
+    allowedTechniques: ['dtf_uv', 'sublimacion_parcial']
+  },
+  {
+    id: 'libreta_b6', name: 'Libreta Corporativa / B6', blankCost: 1.85, pressCost: 0.50,
+    allowedTechniques: ['dtf_uv']
+  },
+  {
+    id: 'bolso_tote', name: 'Bolso Tote Bag / Mochila Sublimable', blankCost: 1.90, pressCost: 0.60,
+    allowedTechniques: ['sublimacion_parcial', 'dtf', 'bordado']
+  },
+  {
+    id: 'prenda_cliente', name: 'Prenda traída por el Cliente (Solo Servicio)', blankCost: 0.00, pressCost: 1.00,
+    allowedTechniques: ['dtf', 'bordado', 'sublimacion_parcial']
+  },
+  {
+    id: 'banner', name: 'Banner / Lona Publicitaria (Gran Formato)', blankCost: 0.00, pressCost: 1.50,
+    allowedTechniques: ['gran_formato']
+  }
 ];
 
 const TECHNIQUES = [
@@ -74,7 +107,7 @@ const TECHNIQUES = [
   }
 ];
 
-// Mantenemos PLACEMENTS por compatibilidad con funciones previas
+// Mantenemos PLACEMENTS por si acaso, aunque ya se maneja por 'variants'
 const PLACEMENTS = [
   { id: '1_logo', name: '1 Ubicación Pequeña (Logo Pecho / Gorra / Libreta)', multiplier: 0.75 },
   { id: '1_frente', name: '1 Lado Estándar (Frente o Espalda A4/A3)', multiplier: 1.00 },

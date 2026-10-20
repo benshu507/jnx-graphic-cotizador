@@ -16,16 +16,15 @@ window.addEventListener('DOMContentLoaded', () => {
 function populateSelects() {
   const prodSelect = document.getElementById('productSelect');
   prodSelect.innerHTML = '<option value="" disabled selected>Seleccione un producto...</option>' + products.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+
   prodSelect.addEventListener('change', (e) => {
-    if (e.target.value === 'banner') {
-      document.getElementById('techniqueSelect').value = 'gran_formato';
-      updateTechniqueVariants('gran_formato');
-    }
+    updateTechniquesForProduct(e.target.value);
     calculateAll();
   });
 
   const techSelect = document.getElementById('techniqueSelect');
-  techSelect.innerHTML = '<option value="" disabled selected>Seleccione una técnica...</option>' + techniques.map((t, idx) => `<option value="${t.id}">${t.name}</option>`).join('');
+  techSelect.innerHTML = '<option value="" disabled selected>Seleccione primero un producto...</option>';
+
   techSelect.addEventListener('change', (e) => {
     updateTechniqueVariants(e.target.value);
     calculateAll();
@@ -34,14 +33,34 @@ function populateSelects() {
   updateTechniqueVariants('');
 }
 
+// NUEVA FUNCIÓN: Filtra las técnicas permitidas según el producto
+function updateTechniquesForProduct(productId) {
+  const techSelect = document.getElementById('techniqueSelect');
+  const product = products.find(p => p.id === productId);
+
+  if (!product || !product.allowedTechniques) {
+    techSelect.innerHTML = '<option value="" disabled selected>Seleccione una técnica...</option>';
+    updateTechniqueVariants('');
+    return;
+  }
+
+  // Filtrar solo las técnicas que están en el arreglo allowedTechniques del producto
+  const allowedTechs = techniques.filter(t => product.allowedTechniques.includes(t.id));
+
+  techSelect.innerHTML = '<option value="" disabled selected>Seleccione una técnica...</option>' +
+    allowedTechs.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
+
+  // Limpiar el selector de variantes hasta que escojan la técnica
+  updateTechniqueVariants('');
+}
+
 function updateTechniqueVariants(techId) {
   const tech = techniques.find(t => t.id === techId);
   const placementSelect = document.getElementById('placementSelect');
   let options = '<option value="" disabled selected>Seleccione cobertura...</option>';
+
   if (tech && tech.variants && tech.variants.length > 0) {
     options += tech.variants.map(v => `<option value="${v.id}" data-mult="${v.multiplier}">${v.name}</option>`).join('');
-  } else if (tech) {
-    options += PLACEMENTS.map(pl => `<option value="${pl.id}" data-mult="${pl.multiplier}">${pl.name}</option>`).join('');
   }
   placementSelect.innerHTML = options;
 }
@@ -423,6 +442,9 @@ function saveCustomCosts() {
 
   localStorage.setItem('jnx_products', JSON.stringify(products));
   localStorage.setItem('jnx_techniques', JSON.stringify(techniques));
+
+  // Refrescar selectores para evitar incoherencias
+  populateSelects();
   calculateAll();
   toggleConfigModal();
 }
@@ -432,6 +454,9 @@ function resetDefaultCosts() {
   localStorage.removeItem('jnx_techniques');
   products = JSON.parse(JSON.stringify(DEFAULT_PRODUCTS));
   techniques = JSON.parse(JSON.stringify(TECHNIQUES));
+
+  // Refrescar selectores
+  populateSelects();
   renderConfigInputs();
   calculateAll();
 }
