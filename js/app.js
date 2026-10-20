@@ -33,7 +33,6 @@ function populateSelects() {
   updateTechniqueVariants('');
 }
 
-// NUEVA FUNCIÓN: Filtra las técnicas permitidas según el producto
 function updateTechniquesForProduct(productId) {
   const techSelect = document.getElementById('techniqueSelect');
   const product = products.find(p => p.id === productId);
@@ -44,13 +43,10 @@ function updateTechniquesForProduct(productId) {
     return;
   }
 
-  // Filtrar solo las técnicas que están en el arreglo allowedTechniques del producto
   const allowedTechs = techniques.filter(t => product.allowedTechniques.includes(t.id));
-
   techSelect.innerHTML = '<option value="" disabled selected>Seleccione una técnica...</option>' +
     allowedTechs.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
 
-  // Limpiar el selector de variantes hasta que escojan la técnica
   updateTechniqueVariants('');
 }
 
@@ -104,6 +100,50 @@ function getVolumeEfficiencyMultiplier(qty) {
   return 1.00;
 }
 
+function resetItemForm() {
+  // Resetear selects al estado inicial "Seleccione..."
+  document.getElementById('productSelect').value = "";
+  document.getElementById('techniqueSelect').innerHTML = '<option value="" disabled selected>Seleccione primero un producto...</option>';
+  document.getElementById('placementSelect').innerHTML = '<option value="" disabled selected>Seleccione cobertura...</option>';
+  document.getElementById('quantityInput').value = "";
+  document.getElementById('designSelect').value = "";
+
+  // Apagar Switch ITBMS
+  includeItbms = false;
+  const btn = document.getElementById('btnToggleItbms');
+  const title = document.getElementById('itbmsTitle');
+  const indicator = document.getElementById('itbmsIndicator');
+  const track = document.getElementById('itbmsTrack');
+
+  btn.className = "w-full p-2.5 rounded-xl border border-slate-700 bg-slate-900 flex items-center justify-between transition cursor-pointer hover:border-cyan-500/50";
+  title.className = "text-[13px] font-bold text-slate-200 leading-tight";
+  indicator.className = "w-4 h-4 rounded-full bg-slate-500 translate-x-0 transition-transform";
+  track.className = "w-10 h-6 rounded-full bg-slate-800 p-1 transition flex items-center border border-slate-700";
+
+  calculateAll(); // Refrescar a $0.00
+}
+
+function toggleItbms() {
+  includeItbms = !includeItbms;
+  const btn = document.getElementById('btnToggleItbms');
+  const title = document.getElementById('itbmsTitle');
+  const indicator = document.getElementById('itbmsIndicator');
+  const track = document.getElementById('itbmsTrack');
+
+  if (includeItbms) {
+    btn.className = "w-full p-2.5 rounded-xl border border-cyan-500 bg-cyan-900/20 flex items-center justify-between transition cursor-pointer";
+    title.className = "text-[13px] font-bold text-cyan-400 leading-tight";
+    indicator.className = "w-4 h-4 rounded-full bg-cyan-400 translate-x-4 transition-transform";
+    track.className = "w-10 h-6 rounded-full bg-slate-800 p-1 transition flex items-center border border-cyan-500/50";
+  } else {
+    btn.className = "w-full p-2.5 rounded-xl border border-slate-700 bg-slate-900 flex items-center justify-between transition cursor-pointer hover:border-cyan-500/50";
+    title.className = "text-[13px] font-bold text-slate-200 leading-tight";
+    indicator.className = "w-4 h-4 rounded-full bg-slate-500 translate-x-0 transition-transform";
+    track.className = "w-10 h-6 rounded-full bg-slate-800 p-1 transition flex items-center border border-slate-700";
+  }
+  calculateAll();
+}
+
 function calculateAll() {
   const prodId = document.getElementById('productSelect').value;
   const techId = document.getElementById('techniqueSelect').value;
@@ -113,13 +153,10 @@ function calculateAll() {
 
   const rawQty = document.getElementById('quantityInput').value;
   const qty = parseInt(rawQty) || 0;
-
-  const transportSelect = document.getElementById('transportSelect').value;
   const designSelect = document.getElementById('designSelect').value;
-  const urgencySelect = document.getElementById('urgencySelect').value;
 
-  // Si faltan datos o no hay cantidad, mantener todo en $0.00
-  if (!prodId || !techId || placeMult === null || qty <= 0 || transportSelect === "" || designSelect === "" || urgencySelect === "") {
+  // Si faltan datos en el Step 2, mantener TODO en cero
+  if (!prodId || !techId || placeMult === null || qty <= 0 || designSelect === "") {
     currentCalculation = null;
 
     document.getElementById('finalClientPrice').textContent = `$0.00`;
@@ -130,12 +167,7 @@ function calculateAll() {
     document.getElementById('summaryDeposit').textContent = `$0.00`;
 
     const itbmsRow = document.getElementById('itbmsSummaryRow');
-    if (includeItbms) {
-      itbmsRow.classList.remove('hidden');
-      document.getElementById('summaryItbms').textContent = `+$0.00`;
-    } else {
-      itbmsRow.classList.add('hidden');
-    }
+    itbmsRow.classList.add('hidden');
 
     document.getElementById('costBlankText').textContent = `$0.00`;
     document.getElementById('costSupplierText').textContent = `$0.00`;
@@ -146,36 +178,31 @@ function calculateAll() {
 
     const discBadge = document.getElementById('discountBadge');
     if (discBadge) discBadge.classList.add('hidden');
-
     return;
   }
 
-  const transportCost = parseFloat(transportSelect) || 0;
   const designCost = parseFloat(designSelect) || 0;
-  const urgencyRate = parseFloat(urgencySelect) || 0;
   const marginPercent = parseFloat(document.getElementById('profitMarginInput').value) || 45;
 
   const product = products.find(p => p.id === prodId) || products[0];
   const technique = techniques.find(t => t.id === techId) || techniques[0];
-
   const volMult = getVolumeEfficiencyMultiplier(qty);
 
+  // Cálculos base sin transporte/urgencia (ya que esos ahora son globales del pedido)
   const totalBlankCost = product.blankCost * qty;
   const unitSupplierCost = technique.supplierCost * placeMult * volMult;
   const totalSupplierCost = unitSupplierCost * qty;
   const unitInHouseCost = product.pressCost * (placeMult > 1.2 ? 1.35 : 1.0);
   const totalInHouseCost = unitInHouseCost * qty;
-  const totalLogisticsCost = transportCost + designCost;
 
-  const totalInternalCost = totalBlankCost + totalSupplierCost + totalInHouseCost + totalLogisticsCost;
-  const baseClientPrice = totalInternalCost * (1 + (marginPercent / 100));
-  const subtotalClient = baseClientPrice * (1 + urgencyRate);
+  const totalInternalCost = totalBlankCost + totalSupplierCost + totalInHouseCost + designCost;
+  const subtotalClient = totalInternalCost * (1 + (marginPercent / 100));
 
   const itbmsAmount = includeItbms ? subtotalClient * 0.07 : 0;
   const finalClientTotal = subtotalClient + itbmsAmount;
 
   const unitClientPrice = finalClientTotal / qty;
-  const netProfit = subtotalClient - totalInternalCost;
+  const netProfit = subtotalClient - totalInternalCost; // Ganancia limpia base
 
   currentCalculation = {
     productName: product.name,
@@ -195,7 +222,7 @@ function calculateAll() {
   document.getElementById('summaryProduct').textContent = product.name;
   document.getElementById('summaryQty').textContent = `${qty} ${qty === 1 ? 'unidad' : 'unidades'}`;
   document.getElementById('summaryTech').textContent = `${technique.name.split('(')[0]} (${selectedOption ? selectedOption.text.split('(')[0].trim() : ''})`;
-  document.getElementById('summaryDeposit').textContent = `$${(finalClientTotal * 0.5).toFixed(2)}`;
+  document.getElementById('summaryDeposit').textContent = `$${finalClientTotal.toFixed(2)}`; // Ahora dice Subtotal del Item
 
   const itbmsRow = document.getElementById('itbmsSummaryRow');
   if (includeItbms) {
@@ -213,23 +240,243 @@ function calculateAll() {
   document.getElementById('costBlankText').textContent = `$${totalBlankCost.toFixed(2)}`;
   document.getElementById('costSupplierText').textContent = `$${totalSupplierCost.toFixed(2)}`;
   document.getElementById('costInHouseText').textContent = `$${totalInHouseCost.toFixed(2)}`;
-  document.getElementById('costLogisticsText').textContent = `$${totalLogisticsCost.toFixed(2)}`;
+  document.getElementById('costLogisticsText').textContent = `$${designCost.toFixed(2)}`;
   document.getElementById('totalInternalCostText').textContent = `$${totalInternalCost.toFixed(2)}`;
   document.getElementById('netProfitText').textContent = `$${netProfit.toFixed(2)}`;
 }
 
-function toggleItbms() {
-  includeItbms = !includeItbms;
-  const btn = document.getElementById('btnToggleItbms');
-  const indicator = document.getElementById('itbmsIndicator');
-  if (includeItbms) {
-    btn.className = "p-3 rounded-xl border flex items-center justify-between transition bg-cyan-500/15 border-cyan-400 text-cyan-200 cursor-pointer";
-    if (indicator) indicator.className = "w-4 h-4 rounded-full bg-cyan-400 translate-x-4 transition-transform";
-  } else {
-    btn.className = "p-3 rounded-xl border flex items-center justify-between transition bg-slate-950/60 border-slate-800 text-slate-400 cursor-pointer";
-    if (indicator) indicator.className = "w-4 h-4 rounded-full bg-slate-700 translate-x-0 transition-transform";
+function addItemToCart() {
+  if (!currentCalculation) {
+    alert("Por favor, completa todas las opciones (Producto, Cantidad, Técnica, Cobertura y Diseño) para configurar el ítem.");
+    return;
   }
-  calculateAll();
+  cart.push({ id: Date.now(), ...currentCalculation });
+  renderCart();
+
+  // Limpia todos los selectores automáticamente tras agregar
+  resetItemForm();
+}
+
+function removeCartItem(id) {
+  cart = cart.filter(item => item.id !== id);
+  renderCart();
+}
+
+function clearCart() {
+  cart = [];
+  renderCart();
+}
+
+function renderCart() {
+  const container = document.getElementById('cartContainer');
+  const totalsBox = document.getElementById('cartTotalsBox');
+
+  // Obtener opciones globales
+  const transSel = document.getElementById('transportSelect');
+  const globalTransport = transSel && transSel.value !== "" ? parseFloat(transSel.value) : 0;
+  const urgSel = document.getElementById('urgencySelect');
+  const globalUrgencyRate = urgSel && urgSel.value !== "" ? parseFloat(urgSel.value) : 0;
+
+  if (cart.length === 0) {
+    container.innerHTML = `<p class="text-xs text-slate-500 text-center py-4">Aún no has agregado artículos al pedido formal.</p>`;
+    totalsBox.classList.add('hidden');
+    return;
+  }
+
+  totalsBox.classList.remove('hidden');
+  let itemsSubtotal = 0;
+  let itemsProfit = 0;
+
+  container.innerHTML = cart.map(item => {
+    itemsSubtotal += item.finalClientTotal;
+    itemsProfit += item.netProfit;
+    return `
+      <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-3 flex items-center justify-between gap-2">
+        <div>
+          <p class="text-xs font-bold text-white">${item.qty}x ${item.productName}</p>
+          <p class="text-[11px] text-slate-400">${item.techniqueName.split('(')[0]} • $${item.unitClientPrice.toFixed(2)} c/u</p>
+        </div>
+        <div class="flex items-center gap-3">
+          <span class="text-sm font-extrabold text-cyan-400">$${item.finalClientTotal.toFixed(2)}</span>
+          <button onclick="removeCartItem(${item.id})" class="text-slate-500 hover:text-red-400 text-xs font-bold">✕</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  // 1. Mostrar Subtotal de Artículos puros
+  document.getElementById('cartItemsSubtotal').textContent = `$${itemsSubtotal.toFixed(2)}`;
+
+  // 2. Aplicar y mostrar Transporte Global
+  const trRow = document.getElementById('cartTransportRow');
+  if (globalTransport > 0) {
+    trRow.classList.remove('hidden');
+    document.getElementById('cartTransportCost').textContent = `+$${globalTransport.toFixed(2)}`;
+  } else {
+    trRow.classList.add('hidden');
+  }
+
+  const preUrgencyTotal = itemsSubtotal + globalTransport;
+
+  // 3. Aplicar y mostrar Urgencia Global (Aplica sobre el subtotal + transporte)
+  const urgRow = document.getElementById('cartUrgencyRow');
+  const urgencyAmount = preUrgencyTotal * globalUrgencyRate;
+  if (urgencyAmount > 0) {
+    urgRow.classList.remove('hidden');
+    document.getElementById('cartUrgencyCost').textContent = `+$${urgencyAmount.toFixed(2)}`;
+  } else {
+    urgRow.classList.add('hidden');
+  }
+
+  // 4. Totales Finales
+  const grandTotal = preUrgencyTotal + urgencyAmount;
+  const totalNetProfit = itemsProfit + urgencyAmount; // Consideramos el recargo express ganancia pura
+
+  document.getElementById('cartGrandTotal').textContent = `$${grandTotal.toFixed(2)}`;
+  document.getElementById('cartDepositTotal').textContent = `$${(grandTotal * 0.5).toFixed(2)}`;
+
+  if (document.getElementById('cartTotalProfit')) {
+    document.getElementById('cartTotalProfit').textContent = `$${totalNetProfit.toFixed(2)}`;
+  }
+}
+
+function printQuotePDF() {
+  const client = document.getElementById('clientName').value.trim() || 'Cliente General';
+  const contact = document.getElementById('clientContact')?.value.trim() || '';
+  const project = document.getElementById('projectDesc').value.trim() || 'Servicio de Personalización JNX';
+
+  // Si no han agregado al carrito, pero tienen algo configurado, usar eso momentáneamente
+  const itemsToPrint = cart.length > 0 ? cart : (currentCalculation ? [currentCalculation] : []);
+
+  if (itemsToPrint.length === 0) {
+    alert("Agregue al menos un producto a la cotización.");
+    return;
+  }
+
+  // Variables Globales
+  const transSel = document.getElementById('transportSelect');
+  const globalTransport = transSel && transSel.value !== "" ? parseFloat(transSel.value) : 0;
+  const urgSel = document.getElementById('urgencySelect');
+  const globalUrgencyRate = urgSel && urgSel.value !== "" ? parseFloat(urgSel.value) : 0;
+
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('es-PA', { year: 'numeric', month: 'long', day: 'numeric' });
+  const quoteNum = `N° JNX-${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${Math.floor(100 + Math.random() * 900)}`;
+
+  if (document.getElementById('pdfQuoteNumber')) document.getElementById('pdfQuoteNumber').textContent = quoteNum;
+  if (document.getElementById('pdfDate')) document.getElementById('pdfDate').textContent = `Fecha: ${dateStr}`;
+  if (document.getElementById('pdfClientName')) document.getElementById('pdfClientName').textContent = client;
+  if (document.getElementById('pdfClientContact')) document.getElementById('pdfClientContact').textContent = contact ? `Contacto / RUC: ${contact}` : '';
+  if (document.getElementById('pdfProjectDesc')) document.getElementById('pdfProjectDesc').textContent = project;
+
+  let itemsSubtotal = 0;
+  const tbody = document.getElementById('pdfTableBody');
+  if (tbody) {
+    tbody.innerHTML = itemsToPrint.map(item => {
+      itemsSubtotal += item.finalClientTotal;
+      const cleanTech = item.techniqueName.split('(')[0].trim();
+      const cleanPlace = item.placementName ? item.placementName.split('(')[0].trim() : '';
+      return `
+        <tr>
+          <td class="py-3.5 px-4 font-bold text-slate-900">${item.qty}</td>
+          <td class="py-3.5 px-4">
+            <p class="font-bold text-slate-900 text-sm">${item.productName}</p>
+            <p class="text-slate-600">Técnica: ${cleanTech} • Cobertura: ${cleanPlace}</p>
+          </td>
+          <td class="py-3.5 px-4 text-right font-semibold text-slate-800">$${item.unitClientPrice.toFixed(2)}</td>
+          <td class="py-3.5 px-4 text-right font-extrabold text-slate-900">$${item.finalClientTotal.toFixed(2)}</td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  // Desglose Final PDF
+  if (document.getElementById('pdfSubtotal')) document.getElementById('pdfSubtotal').textContent = `$${itemsSubtotal.toFixed(2)}`;
+
+  const pdfTransRow = document.getElementById('pdfTransportRow');
+  if (globalTransport > 0) {
+    pdfTransRow.classList.remove('hidden');
+    document.getElementById('pdfTransportCost').textContent = `+$${globalTransport.toFixed(2)}`;
+  } else {
+    pdfTransRow.classList.add('hidden');
+  }
+
+  const urgencyAmount = (itemsSubtotal + globalTransport) * globalUrgencyRate;
+  const pdfUrgRow = document.getElementById('pdfUrgencyRow');
+  if (urgencyAmount > 0) {
+    pdfUrgRow.classList.remove('hidden');
+    document.getElementById('pdfUrgencyCost').textContent = `+$${urgencyAmount.toFixed(2)}`;
+  } else {
+    pdfUrgRow.classList.add('hidden');
+  }
+
+  const grandTotal = itemsSubtotal + globalTransport + urgencyAmount;
+  const deposit = grandTotal * 0.5;
+
+  if (document.getElementById('pdfGrandTotal')) document.getElementById('pdfGrandTotal').textContent = `$${grandTotal.toFixed(2)}`;
+  if (document.getElementById('pdfDeposit')) document.getElementById('pdfDeposit').textContent = `$${deposit.toFixed(2)}`;
+
+  window.print();
+}
+
+function copyWhatsAppQuote() {
+  const client = document.getElementById('clientName').value.trim() || 'Estimado Cliente';
+  const project = document.getElementById('projectDesc').value.trim();
+  const itemsToQuote = cart.length > 0 ? cart : (currentCalculation ? [currentCalculation] : []);
+
+  if (itemsToQuote.length === 0) {
+    alert("Agregue al menos un producto a la cotización.");
+    return;
+  }
+
+  // Variables Globales
+  const transSel = document.getElementById('transportSelect');
+  const globalTransport = transSel && transSel.value !== "" ? parseFloat(transSel.value) : 0;
+  const transName = transSel && transSel.value !== "" && globalTransport > 0 ? transSel.options[transSel.selectedIndex].text : '';
+
+  const urgSel = document.getElementById('urgencySelect');
+  const globalUrgencyRate = urgSel && urgSel.value !== "" ? parseFloat(urgSel.value) : 0;
+
+  let itemsSubtotal = 0;
+  let lines = itemsToQuote.map(item => {
+    itemsSubtotal += item.finalClientTotal;
+    const techClean = item.techniqueName ? item.techniqueName.split('(')[0].trim() : '';
+    return `▪ *${item.qty}x ${item.productName}*\n   Trabajo: ${techClean}\n   Unitario: $${item.unitClientPrice.toFixed(2)} | Subtotal: *$${item.finalClientTotal.toFixed(2)}*`;
+  }).join('\n\n');
+
+  const urgencyAmount = (itemsSubtotal + globalTransport) * globalUrgencyRate;
+  const grandTotal = itemsSubtotal + globalTransport + urgencyAmount;
+  const deposit = grandTotal * 0.5;
+
+  let extraLines = "";
+  if (globalTransport > 0) extraLines += `\n🚚 Logística/Transporte: +$${globalTransport.toFixed(2)}`;
+  if (urgencyAmount > 0) extraLines += `\n⚡ Recargo Express: +$${urgencyAmount.toFixed(2)}`;
+
+  const hasItbms = itemsToQuote.some(item => item.itbmsAmount > 0);
+  const itbmsText = hasItbms ? `\n🧾 _Precios de ítems incluyen ITBMS (7%)_` : '';
+
+  const text = `*COTIZACIÓN OFICIAL - JNX GRAPHIC* 🎨\n` +
+    `👤 *Cliente:* ${client}\n` +
+    (project ? `📌 *Proyecto:* ${project}\n` : '') +
+    `----------------------------------\n` +
+    `${lines}\n` +
+    `----------------------------------` +
+    `${extraLines}\n` +
+    `💰 *TOTAL A PAGAR: $${grandTotal.toFixed(2)}*${itbmsText}\n` +
+    `✅ *Abono 50% para iniciar:* $${deposit.toFixed(2)}\n\n` +
+    `_Cotización válida por 7 días. Incluye control de calidad y acabado profesional._`;
+
+  navigator.clipboard.writeText(text).then(() => {
+    const btnText = document.getElementById('copyBtnText');
+    if (btnText) {
+      btnText.textContent = "¡Copiado!";
+      setTimeout(() => {
+        btnText.textContent = "Copiar para WhatsApp";
+      }, 2500);
+    } else {
+      alert("¡Cotización copiada al portapapeles para WhatsApp!");
+    }
+  });
 }
 
 function toggleInternalMode() {
@@ -250,158 +497,6 @@ function toggleInternalMode() {
     btn.className = "flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition border bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20";
     modeText.textContent = "Modo Cliente (Costos Ocultos)";
   }
-}
-
-function addItemToCart() {
-  if (!currentCalculation) {
-    alert("Por favor, completa todas las opciones (Producto, Cantidad, Técnica, Transporte, Arte y Prioridad) para configurar el precio.");
-    return;
-  }
-  cart.push({ id: Date.now(), ...currentCalculation });
-  renderCart();
-}
-
-function removeCartItem(id) {
-  cart = cart.filter(item => item.id !== id);
-  renderCart();
-}
-
-function clearCart() {
-  cart = [];
-  renderCart();
-}
-
-function renderCart() {
-  const container = document.getElementById('cartContainer');
-  const totalsBox = document.getElementById('cartTotalsBox');
-
-  if (cart.length === 0) {
-    container.innerHTML = `<p class="text-xs text-slate-500 text-center py-4">Si no agregas varios ítems aquí, el PDF y el mensaje de WhatsApp usarán automáticamente el producto configurado arriba.</p>`;
-    totalsBox.classList.add('hidden');
-    return;
-  }
-
-  totalsBox.classList.remove('hidden');
-  let grandTotal = 0;
-  let totalProfit = 0;
-
-  container.innerHTML = cart.map(item => {
-    grandTotal += item.finalClientTotal;
-    totalProfit += item.netProfit;
-    return `
-      <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-3 flex items-center justify-between gap-2">
-        <div>
-          <p class="text-xs font-bold text-white">${item.qty}x ${item.productName}</p>
-          <p class="text-[11px] text-slate-400">${item.techniqueName.split('(')[0]} • $${item.unitClientPrice.toFixed(2)} c/u</p>
-        </div>
-        <div class="flex items-center gap-3">
-          <span class="text-sm font-extrabold text-cyan-400">$${item.finalClientTotal.toFixed(2)}</span>
-          <button onclick="removeCartItem(${item.id})" class="text-slate-500 hover:text-red-400 text-xs font-bold">✕</button>
-        </div>
-      </div>
-    `;
-  }).join('');
-
-  document.getElementById('cartGrandTotal').textContent = `$${grandTotal.toFixed(2)}`;
-  document.getElementById('cartDepositTotal').textContent = `$${(grandTotal * 0.5).toFixed(2)}`;
-  if (document.getElementById('cartTotalProfit')) {
-    document.getElementById('cartTotalProfit').textContent = `$${totalProfit.toFixed(2)}`;
-  }
-}
-
-function printQuotePDF() {
-  const client = document.getElementById('clientName').value.trim() || 'Cliente General';
-  const contact = document.getElementById('clientContact')?.value.trim() || '';
-  const project = document.getElementById('projectDesc').value.trim() || 'Servicio de Personalización JNX';
-  const itemsToPrint = cart.length > 0 ? cart : (currentCalculation ? [currentCalculation] : []);
-
-  if (itemsToPrint.length === 0) {
-    alert("Agregue al menos un producto a la cotización.");
-    return;
-  }
-
-  const now = new Date();
-  const dateStr = now.toLocaleDateString('es-PA', { year: 'numeric', month: 'long', day: 'numeric' });
-  const quoteNum = `N° JNX-${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${Math.floor(100 + Math.random() * 900)}`;
-
-  if (document.getElementById('pdfQuoteNumber')) document.getElementById('pdfQuoteNumber').textContent = quoteNum;
-  if (document.getElementById('pdfDate')) document.getElementById('pdfDate').textContent = `Fecha: ${dateStr}`;
-  if (document.getElementById('pdfClientName')) document.getElementById('pdfClientName').textContent = client;
-  if (document.getElementById('pdfClientContact')) document.getElementById('pdfClientContact').textContent = contact ? `Contacto / RUC: ${contact}` : '';
-  if (document.getElementById('pdfProjectDesc')) document.getElementById('pdfProjectDesc').textContent = project;
-
-  let grandTotal = 0;
-  const tbody = document.getElementById('pdfTableBody');
-  if (tbody) {
-    tbody.innerHTML = itemsToPrint.map(item => {
-      grandTotal += item.finalClientTotal;
-      const cleanTech = item.techniqueName.split('(')[0].trim();
-      const cleanPlace = item.placementName ? item.placementName.split('(')[0].trim() : '';
-      return `
-        <tr>
-          <td class="py-3.5 px-4 font-bold text-slate-900">${item.qty}</td>
-          <td class="py-3.5 px-4">
-            <p class="font-bold text-slate-900 text-sm">${item.productName}</p>
-            <p class="text-slate-600">Técnica: ${cleanTech} • Cobertura: ${cleanPlace}</p>
-          </td>
-          <td class="py-3.5 px-4 text-right font-semibold text-slate-800">$${item.unitClientPrice.toFixed(2)}</td>
-          <td class="py-3.5 px-4 text-right font-extrabold text-slate-900">$${item.finalClientTotal.toFixed(2)}</td>
-        </tr>
-      `;
-    }).join('');
-  }
-
-  const half = grandTotal * 0.5;
-  if (document.getElementById('pdfSubtotal')) document.getElementById('pdfSubtotal').textContent = `$${grandTotal.toFixed(2)}`;
-  if (document.getElementById('pdfGrandTotal')) document.getElementById('pdfGrandTotal').textContent = `$${grandTotal.toFixed(2)}`;
-  if (document.getElementById('pdfDeposit')) document.getElementById('pdfDeposit').textContent = `$${half.toFixed(2)}`;
-  if (document.getElementById('pdfBalance')) document.getElementById('pdfBalance').textContent = `$${half.toFixed(2)}`;
-
-  window.print();
-}
-
-function copyWhatsAppQuote() {
-  const client = document.getElementById('clientName').value.trim() || 'Estimado Cliente';
-  const project = document.getElementById('projectDesc').value.trim();
-  const itemsToQuote = cart.length > 0 ? cart : (currentCalculation ? [currentCalculation] : []);
-
-  if (itemsToQuote.length === 0) {
-    alert("Agregue al menos un producto a la cotización.");
-    return;
-  }
-
-  let total = 0;
-  let lines = itemsToQuote.map(item => {
-    total += item.finalClientTotal;
-    const techClean = item.techniqueName ? item.techniqueName.split('(')[0].trim() : '';
-    return `▪ *${item.qty}x ${item.productName}*\n   Trabajo: ${techClean}\n   Unitario: $${item.unitClientPrice.toFixed(2)} | Subtotal: *$${item.finalClientTotal.toFixed(2)}*`;
-  }).join('\n\n');
-
-  const deposit = total * 0.5;
-  const hasItbms = itemsToQuote.some(item => item.itbmsAmount > 0);
-  const itbmsText = hasItbms ? `\n🧾 _Incluye ITBMS (7%)_` : '';
-
-  const text = `*COTIZACIÓN OFICIAL - JNX GRAPHIC* 🎨\n` +
-    `👤 *Cliente:* ${client}\n` +
-    (project ? `📌 *Proyecto:* ${project}\n` : '') +
-    `----------------------------------\n` +
-    `${lines}\n` +
-    `----------------------------------\n` +
-    `💰 *TOTAL A PAGAR: $${total.toFixed(2)}*${itbmsText}\n` +
-    `✅ *Abono 50% para iniciar:* $${deposit.toFixed(2)}\n\n` +
-    `_Cotización válida por 7 días. Incluye control de calidad y acabado profesional._`;
-
-  navigator.clipboard.writeText(text).then(() => {
-    const btnText = document.getElementById('copyBtnText');
-    if (btnText) {
-      btnText.textContent = "¡Copiado!";
-      setTimeout(() => {
-        btnText.textContent = "Copiar para WhatsApp";
-      }, 2500);
-    } else {
-      alert("¡Cotización copiada al portapapeles para WhatsApp!");
-    }
-  });
 }
 
 function toggleConfigModal() {
@@ -443,7 +538,6 @@ function saveCustomCosts() {
   localStorage.setItem('jnx_products', JSON.stringify(products));
   localStorage.setItem('jnx_techniques', JSON.stringify(techniques));
 
-  // Refrescar selectores para evitar incoherencias
   populateSelects();
   calculateAll();
   toggleConfigModal();
@@ -455,7 +549,6 @@ function resetDefaultCosts() {
   products = JSON.parse(JSON.stringify(DEFAULT_PRODUCTS));
   techniques = JSON.parse(JSON.stringify(TECHNIQUES));
 
-  // Refrescar selectores
   populateSelects();
   renderConfigInputs();
   calculateAll();
