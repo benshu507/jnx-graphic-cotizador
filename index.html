@@ -101,7 +101,7 @@
               <div class="flex items-center">
                 <button onclick="adjustQty(-1)"
                   class="px-3.5 py-2.5 bg-slate-800 hover:bg-slate-700 rounded-l-xl border border-slate-700 text-white font-bold">-</button>
-                <input id="quantityInput" type="number" min="1" value="12" oninput="calculateAll()"
+                <input id="quantityInput" type="number" min="1" value="" placeholder="0" oninput="calculateAll()"
                   class="w-full bg-slate-900 border-y border-slate-700 py-2.5 text-center text-sm font-bold text-white focus:outline-none">
                 <button onclick="adjustQty(1)"
                   class="px-3.5 py-2.5 bg-slate-800 hover:bg-slate-700 rounded-r-xl border border-slate-700 text-white font-bold">+</button>
@@ -128,9 +128,10 @@
               <label class="block text-xs font-medium text-slate-300 mb-1.5">Logística / Transporte</label>
               <select id="transportSelect" onchange="calculateAll()"
                 class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500">
+                <option value="" disabled selected>Seleccione...</option>
                 <option value="0">Sin transporte extra ($0.00)</option>
                 <option value="3.50">Transporte Local Básico ($3.50)</option>
-                <option value="6.00" selected>Ida y vuelta Proveedor ($6.00)</option>
+                <option value="6.00">Ida y vuelta Proveedor ($6.00)</option>
                 <option value="10.00">Mensajería / Delivery Completo ($10.00)</option>
                 <option value="15.00">Logística Especial / Interior ($15.00)</option>
               </select>
@@ -140,7 +141,8 @@
               <label class="block text-xs font-medium text-slate-300 mb-1.5">Arte y Diseño Gráfico</label>
               <select id="designSelect" onchange="calculateAll()"
                 class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500">
-                <option value="0" selected>Cliente entrega arte listo ($0.00)</option>
+                <option value="" disabled selected>Seleccione...</option>
+                <option value="0">Cliente entrega arte listo ($0.00)</option>
                 <option value="5.00">Ajuste / Vectorizado Básico ($5.00)</option>
                 <option value="12.00">Diseño Personalizado ($12.00)</option>
                 <option value="25.00">Diseño Complejo / Full Patrón ($25.00)</option>
@@ -151,10 +153,26 @@
               <label class="block text-xs font-medium text-slate-300 mb-1.5">Prioridad del Pedido</label>
               <select id="urgencySelect" onchange="calculateAll()"
                 class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500">
-                <option value="0" selected>Entrega Estándar (Normal)</option>
+                <option value="" disabled selected>Seleccione...</option>
+                <option value="0">Entrega Estándar (Normal)</option>
                 <option value="0.15">Pedido Express (+15% recargo)</option>
                 <option value="0.25">Urgencia 24h (+25% recargo)</option>
               </select>
+            </div>
+          </div>
+
+          <!-- SWITCH ITBMS MOVIDO AL PASO 2 -->
+          <div class="pt-4 mt-2 border-t border-slate-800">
+            <div id="btnToggleItbms" onclick="toggleItbms()"
+              class="p-3 rounded-xl border flex items-center justify-between transition bg-slate-950/60 border-slate-800 text-slate-400 cursor-pointer">
+              <div class="flex items-center gap-2">
+                <i data-lucide="receipt" class="w-4 h-4 text-cyan-400"></i>
+                <span class="text-xs font-bold text-slate-200">Sumar ITBMS (7% Panamá) al Pedido</span>
+              </div>
+              <div class="w-9 h-5 rounded-full bg-slate-800 p-0.5 transition">
+                <div id="itbmsIndicator" class="w-4 h-4 rounded-full bg-slate-700 translate-x-0 transition-transform">
+                </div>
+              </div>
             </div>
           </div>
 
@@ -241,7 +259,7 @@
             <div class="flex justify-between"><span class="text-slate-400">Producto:</span><span id="summaryProduct"
                 class="font-semibold text-white text-right">-</span></div>
             <div class="flex justify-between"><span class="text-slate-400">Cantidad:</span><span id="summaryQty"
-                class="font-semibold text-white">12 unidades</span></div>
+                class="font-semibold text-white">-</span></div>
             <div class="flex justify-between"><span class="text-slate-400">Trabajo:</span><span id="summaryTech"
                 class="font-semibold text-cyan-300 text-right">-</span></div>
             <!-- FILA ITBMS DINÁMICA -->
@@ -251,21 +269,6 @@
             </div>
             <div class="flex justify-between"><span class="text-slate-400">Abono 50% para iniciar:</span><span
                 id="summaryDeposit" class="font-bold text-emerald-400">$0.00</span></div>
-          </div>
-
-          <!-- SWITCH ITBMS 7% -->
-          <div class="mt-4">
-            <div id="btnToggleItbms" onclick="toggleItbms()"
-              class="p-3 rounded-xl border flex items-center justify-between transition bg-slate-950/60 border-slate-800 text-slate-400 cursor-pointer">
-              <div class="flex items-center gap-2">
-                <i data-lucide="receipt" class="w-4 h-4 text-cyan-400"></i>
-                <span class="text-xs font-bold text-slate-200">Sumar ITBMS (7% Panamá)</span>
-              </div>
-              <div class="w-9 h-5 rounded-full bg-slate-800 p-0.5 transition">
-                <div id="itbmsIndicator" class="w-4 h-4 rounded-full bg-slate-700 translate-x-0 transition-transform">
-                </div>
-              </div>
-            </div>
           </div>
         </div>
 
