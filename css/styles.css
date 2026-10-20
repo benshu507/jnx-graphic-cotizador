@@ -1,0 +1,39 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+body {
+  font-family: 'Inter', sans-serif;
+  background-color: #0f172a;
+  color: #f8fafc;
+}
+
+.glass-card {
+  background: rgba(30, 41, 59, 0.75);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+input[type="range"] {
+  accent-color: #06b6d4;
+}
+
+/* CONFIGURACIÓN EXCLUSIVA DE IMPRESIÓN / PDF */
+@media print {
+  @page {
+    size: letter portrait;
+    margin: 12mm;
+  }
+  body {
+    background-color: #ffffff !important;
+    color: #0f172a !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+  #printableInvoice {
+    display: block !important;
+    background: #ffffff !important;
+    color: #0f172a !important;
+  }
+}
