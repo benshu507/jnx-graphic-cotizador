@@ -294,11 +294,20 @@
           <div class="bg-slate-900/90 rounded-2xl p-5 text-center space-y-2">
             <p class="text-xs text-slate-400">Total a Cobrar por este Pedido</p>
             <div id="finalClientPrice" class="text-4xl sm:text-5xl font-extrabold text-white tracking-tight">$0.00</div>
-            <div class="pt-2 flex items-center justify-center gap-2 text-sm text-cyan-400 font-semibold">
-              <span>Precio Unitario al Cliente:</span>
-              <span id="unitClientPrice" class="bg-cyan-500/15 px-3 py-0.5 rounded-lg border border-cyan-500/30">$0.00
-                c/u</span>
+
+            <!-- Edición de Precio Manual Integrada -->
+            <div class="pt-2 flex items-center justify-center gap-2">
+              <span class="text-sm text-cyan-400 font-semibold">Precio Unitario al Cliente:</span>
+              <div class="relative flex items-center group">
+                <span class="absolute left-2 text-white/50 text-sm font-semibold pointer-events-none">$</span>
+                <input id="unitClientPriceInput" type="number" step="0.01" min="0" value="0.00"
+                  onchange="applyManualPrice()"
+                  class="w-24 bg-cyan-500/15 px-3 pl-5 py-0.5 rounded-lg border border-cyan-500/30 text-white text-sm font-bold focus:outline-none focus:border-cyan-400 focus:bg-slate-800 transition hover:bg-slate-800">
+                <i data-lucide="pencil"
+                  class="w-3.5 h-3.5 text-cyan-400/50 absolute right-2 pointer-events-none group-hover:text-cyan-400"></i>
+              </div>
             </div>
+            <p id="manualPriceIndicator" class="text-[10px] text-fuchsia-400 hidden">Precio editado manualmente</p>
           </div>
 
           <div class="mt-4 space-y-2 text-xs text-slate-300 bg-slate-900/50 p-4 rounded-xl border border-slate-800/80">

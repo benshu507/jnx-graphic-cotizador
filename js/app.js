@@ -7,6 +7,9 @@ let isMixedSizes = false;
 let cart = [];
 let currentCalculation = null;
 
+// Variable para rastrear si el usuario alteró el precio manualmente
+let manualPriceOverride = null;
+
 window.addEventListener('DOMContentLoaded', () => {
   populateSelects();
   applySavedLogo();
@@ -21,6 +24,7 @@ function populateSelects() {
   prodSelect.addEventListener('change', (e) => {
     updateTechniquesForProduct(e.target.value);
     checkIfTextile(e.target.value);
+    manualPriceOverride = null; // Reiniciar override al cambiar producto
     calculateAll();
   });
 
@@ -29,6 +33,7 @@ function populateSelects() {
 
   techSelect.addEventListener('change', (e) => {
     updateTechniqueVariants(e.target.value);
+    manualPriceOverride = null;
     calculateAll();
   });
 
@@ -44,7 +49,6 @@ function checkIfTextile(productId) {
     toggleBox.classList.remove('hidden');
   } else {
     toggleBox.classList.add('hidden');
-    // Si cambia de textil a no textil, apagar tallas mixtas
     if (isMixedSizes) {
       document.getElementById('mixedSizesCheckbox').checked = false;
       toggleMixedSizes();
@@ -64,6 +68,7 @@ function toggleMixedSizes() {
     singleBox.classList.remove('hidden');
     splitBox.classList.add('hidden');
   }
+  manualPriceOverride = null;
   calculateAll();
 }
 
@@ -93,6 +98,7 @@ function updateTechniqueVariants(techId) {
     options += tech.variants.map(v => `<option value="${v.id}" data-mult="${v.multiplier}">${v.name}</option>`).join('');
   }
   placementSelect.innerHTML = options;
+  placementSelect.addEventListener('change', () => { manualPriceOverride = null; });
 }
 
 function handleLogoUpload(event) {
@@ -123,10 +129,10 @@ function adjustQty(inputId, delta) {
   const input = document.getElementById(inputId);
   let val = parseInt(input.value) || 0;
   input.value = Math.max(0, val + delta);
-  // Si es la cantidad única, que el mínimo sea 1
   if (inputId === 'quantityInput') {
     input.value = Math.max(1, parseInt(input.value) || 1);
   }
+  manualPriceOverride = null;
   calculateAll();
 }
 
@@ -149,14 +155,12 @@ function resetItemForm() {
 
   document.getElementById('designSelect').value = "";
 
-  // Apagar Mixtos
   document.getElementById('mixedSizesCheckbox').checked = false;
   isMixedSizes = false;
   document.getElementById('singleQuantityBox').classList.remove('hidden');
   document.getElementById('splitQuantityBox').classList.add('hidden');
   document.getElementById('mixedSizesToggleBox').classList.add('hidden');
 
-  // Apagar Switch ITBMS
   includeItbms = false;
   const btn = document.getElementById('btnToggleItbms');
   const title = document.getElementById('itbmsTitle');
@@ -167,6 +171,10 @@ function resetItemForm() {
   title.className = "text-[13px] font-bold text-slate-200 leading-tight";
   indicator.className = "w-4 h-4 rounded-full bg-slate-500 translate-x-0 transition-transform";
   track.className = "w-10 h-6 rounded-full bg-slate-800 p-1 transition flex items-center border border-slate-700";
+
+  manualPriceOverride = null;
+  document.getElementById('manualPriceIndicator').classList.add('hidden');
+  document.getElementById('profitMarginInput').value = 45;
 
   calculateAll();
 }
@@ -192,6 +200,22 @@ function toggleItbms() {
   calculateAll();
 }
 
+// FUNCION NUEVA: Se ejecuta al cambiar el número en el input del precio
+function applyManualPrice() {
+  const manualInput = parseFloat(document.getElementById('unitClientPriceInput').value);
+  if (!isNaN(manualInput) && manualInput > 0) {
+    manualPriceOverride = manualInput;
+    document.getElementById('manualPriceIndicator').classList.remove('hidden');
+  } else {
+    manualPriceOverride = null;
+    document.getElementById('manualPriceIndicator').classList.add('hidden');
+  }
+  calculateAll();
+}
+
+document.getElementById('designSelect').addEventListener('change', () => { manualPriceOverride = null; });
+document.getElementById('profitMarginInput').addEventListener('input', () => { manualPriceOverride = null; });
+
 function calculateAll() {
   const prodId = document.getElementById('productSelect').value;
   const techId = document.getElementById('techniqueSelect').value;
@@ -200,7 +224,6 @@ function calculateAll() {
   const placeMult = selectedOption && !selectedOption.disabled ? parseFloat(selectedOption.getAttribute('data-mult')) || 1.0 : null;
   const designSelect = document.getElementById('designSelect').value;
 
-  // Lógica de cantidades mixtas
   let qtyAdults = 0;
   let qtyKids = 0;
   let totalQty = 0;
@@ -211,22 +234,22 @@ function calculateAll() {
     totalQty = qtyAdults + qtyKids;
   } else {
     totalQty = parseInt(document.getElementById('quantityInput').value) || 0;
-    qtyAdults = totalQty; // Todo adulto por defecto
+    qtyAdults = totalQty;
   }
 
-  // Si faltan datos en el Step 2, mantener TODO en cero
+  // SI FALTAN DATOS
   if (!prodId || !techId || placeMult === null || totalQty <= 0 || designSelect === "") {
     currentCalculation = null;
 
     document.getElementById('finalClientPrice').textContent = `$0.00`;
-    document.getElementById('unitClientPrice').textContent = `$0.00 c/u`;
+    document.getElementById('unitClientPriceInput').value = `0.00`;
     document.getElementById('summaryProduct').textContent = '-';
     document.getElementById('summaryQty').textContent = '-';
     document.getElementById('summaryTech').textContent = '-';
     document.getElementById('summaryDeposit').textContent = `$0.00`;
 
-    const itbmsRow = document.getElementById('itbmsSummaryRow');
-    itbmsRow.classList.add('hidden');
+    document.getElementById('itbmsSummaryRow').classList.add('hidden');
+    document.getElementById('manualPriceIndicator').classList.add('hidden');
 
     document.getElementById('costBlankText').textContent = `$0.00`;
     document.getElementById('costSupplierText').textContent = `$0.00`;
@@ -240,6 +263,10 @@ function calculateAll() {
     return;
   }
 
+  if (manualPriceOverride === null) {
+    document.getElementById('manualPriceIndicator').classList.add('hidden');
+  }
+
   const designCost = parseFloat(designSelect) || 0;
   const marginPercent = parseFloat(document.getElementById('profitMarginInput').value) || 45;
 
@@ -247,30 +274,51 @@ function calculateAll() {
   const technique = techniques.find(t => t.id === techId) || techniques[0];
   const volMult = getVolumeEfficiencyMultiplier(totalQty);
 
-  // Costo en Blanco Mixto (El niño cuesta 20% menos base)
   const costAdultBlank = product.blankCost;
-  const costKidBlank = product.blankCost * 0.80; // 20% descuento para niños
+  const costKidBlank = product.blankCost * 0.80;
   const totalBlankCost = (costAdultBlank * qtyAdults) + (costKidBlank * qtyKids);
 
-  // La impresión y mano de obra cuesta lo mismo por ahora
   const unitSupplierCost = technique.supplierCost * placeMult * volMult;
   const totalSupplierCost = unitSupplierCost * totalQty;
   const unitInHouseCost = product.pressCost * (placeMult > 1.2 ? 1.35 : 1.0);
   const totalInHouseCost = unitInHouseCost * totalQty;
 
   const totalInternalCost = totalBlankCost + totalSupplierCost + totalInHouseCost + designCost;
-  const subtotalClient = totalInternalCost * (1 + (marginPercent / 100));
 
-  const itbmsAmount = includeItbms ? subtotalClient * 0.07 : 0;
-  const finalClientTotal = subtotalClient + itbmsAmount;
+  let unitClientPrice = 0;
+  let finalClientTotal = 0;
+  let subtotalClient = 0;
+  let itbmsAmount = 0;
 
-  const unitClientPrice = finalClientTotal / totalQty;
+  // LÓGICA DE PRECIO MANUAL VS AUTOMÁTICO
+  if (manualPriceOverride !== null) {
+    // Si el usuario escribió un precio, ese precio final ya incluye el ITBMS (si el switch está activo)
+    // porque el cliente final paga el Unitario X que dictó el vendedor.
+    unitClientPrice = manualPriceOverride;
+    finalClientTotal = unitClientPrice * totalQty;
+
+    if (includeItbms) {
+      subtotalClient = finalClientTotal / 1.07;
+      itbmsAmount = finalClientTotal - subtotalClient;
+    } else {
+      subtotalClient = finalClientTotal;
+      itbmsAmount = 0;
+    }
+  } else {
+    // Cálculo Normal por Sistema
+    subtotalClient = totalInternalCost * (1 + (marginPercent / 100));
+    itbmsAmount = includeItbms ? subtotalClient * 0.07 : 0;
+    finalClientTotal = subtotalClient + itbmsAmount;
+    unitClientPrice = finalClientTotal / totalQty;
+    // Actualizamos el input para que muestre el cálculo sugerido
+    document.getElementById('unitClientPriceInput').value = unitClientPrice.toFixed(2);
+  }
+
   const netProfit = subtotalClient - totalInternalCost;
 
-  // Formato para Resumen WhatsApp / PDF (Distinguir si es mixto)
   let qtyText = `${totalQty} unidades`;
   if (isMixedSizes && qtyKids > 0) {
-    qtyText = `${totalQty} unds (${qtyAdults} Adulto / ${qtyKids} Niño)`;
+    qtyText = `${totalQty} unds (${qtyAdults} Ad / ${qtyKids} Ni)`;
   }
 
   currentCalculation = {
@@ -288,7 +336,7 @@ function calculateAll() {
   };
 
   document.getElementById('finalClientPrice').textContent = `$${finalClientTotal.toFixed(2)}`;
-  document.getElementById('unitClientPrice').textContent = `Promedio: $${unitClientPrice.toFixed(2)} c/u`;
+
   document.getElementById('summaryProduct').textContent = product.name;
   document.getElementById('summaryQty').textContent = qtyText;
   document.getElementById('summaryTech').textContent = `${technique.name.split('(')[0]} (${selectedOption ? selectedOption.text.split('(')[0].trim() : ''})`;
