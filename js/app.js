@@ -3,6 +3,7 @@ let techniques = JSON.parse(localStorage.getItem('jnx_techniques')) || TECHNIQUE
 let savedLogo = localStorage.getItem('jnx_custom_logo') || '';
 let internalMode = false;
 let includeItbms = false;
+let isMixedSizes = false;
 let cart = [];
 let currentCalculation = null;
 
@@ -19,6 +20,7 @@ function populateSelects() {
 
   prodSelect.addEventListener('change', (e) => {
     updateTechniquesForProduct(e.target.value);
+    checkIfTextile(e.target.value);
     calculateAll();
   });
 
@@ -31,6 +33,38 @@ function populateSelects() {
   });
 
   updateTechniqueVariants('');
+}
+
+function checkIfTextile(productId) {
+  const textileKeywords = ['tshirt', 'polo', 'abrigo', 'hoodie', 'sueter', 'pantalon', 'prenda'];
+  const isTextile = textileKeywords.some(keyword => productId.toLowerCase().includes(keyword));
+
+  const toggleBox = document.getElementById('mixedSizesToggleBox');
+  if (isTextile) {
+    toggleBox.classList.remove('hidden');
+  } else {
+    toggleBox.classList.add('hidden');
+    // Si cambia de textil a no textil, apagar tallas mixtas
+    if (isMixedSizes) {
+      document.getElementById('mixedSizesCheckbox').checked = false;
+      toggleMixedSizes();
+    }
+  }
+}
+
+function toggleMixedSizes() {
+  isMixedSizes = document.getElementById('mixedSizesCheckbox').checked;
+  const singleBox = document.getElementById('singleQuantityBox');
+  const splitBox = document.getElementById('splitQuantityBox');
+
+  if (isMixedSizes) {
+    singleBox.classList.add('hidden');
+    splitBox.classList.remove('hidden');
+  } else {
+    singleBox.classList.remove('hidden');
+    splitBox.classList.add('hidden');
+  }
+  calculateAll();
 }
 
 function updateTechniquesForProduct(productId) {
@@ -85,10 +119,14 @@ function applySavedLogo() {
   }
 }
 
-function adjustQty(delta) {
-  const input = document.getElementById('quantityInput');
+function adjustQty(inputId, delta) {
+  const input = document.getElementById(inputId);
   let val = parseInt(input.value) || 0;
-  input.value = Math.max(1, val + delta);
+  input.value = Math.max(0, val + delta);
+  // Si es la cantidad única, que el mínimo sea 1
+  if (inputId === 'quantityInput') {
+    input.value = Math.max(1, parseInt(input.value) || 1);
+  }
   calculateAll();
 }
 
@@ -101,12 +139,22 @@ function getVolumeEfficiencyMultiplier(qty) {
 }
 
 function resetItemForm() {
-  // Resetear selects al estado inicial "Seleccione..."
   document.getElementById('productSelect').value = "";
   document.getElementById('techniqueSelect').innerHTML = '<option value="" disabled selected>Seleccione primero un producto...</option>';
   document.getElementById('placementSelect').innerHTML = '<option value="" disabled selected>Seleccione cobertura...</option>';
+
   document.getElementById('quantityInput').value = "";
+  document.getElementById('qtyAdults').value = "0";
+  document.getElementById('qtyKids').value = "0";
+
   document.getElementById('designSelect').value = "";
+
+  // Apagar Mixtos
+  document.getElementById('mixedSizesCheckbox').checked = false;
+  isMixedSizes = false;
+  document.getElementById('singleQuantityBox').classList.remove('hidden');
+  document.getElementById('splitQuantityBox').classList.add('hidden');
+  document.getElementById('mixedSizesToggleBox').classList.add('hidden');
 
   // Apagar Switch ITBMS
   includeItbms = false;
@@ -120,7 +168,7 @@ function resetItemForm() {
   indicator.className = "w-4 h-4 rounded-full bg-slate-500 translate-x-0 transition-transform";
   track.className = "w-10 h-6 rounded-full bg-slate-800 p-1 transition flex items-center border border-slate-700";
 
-  calculateAll(); // Refrescar a $0.00
+  calculateAll();
 }
 
 function toggleItbms() {
@@ -150,13 +198,24 @@ function calculateAll() {
   const placementSelect = document.getElementById('placementSelect');
   const selectedOption = placementSelect.options[placementSelect.selectedIndex];
   const placeMult = selectedOption && !selectedOption.disabled ? parseFloat(selectedOption.getAttribute('data-mult')) || 1.0 : null;
-
-  const rawQty = document.getElementById('quantityInput').value;
-  const qty = parseInt(rawQty) || 0;
   const designSelect = document.getElementById('designSelect').value;
 
+  // Lógica de cantidades mixtas
+  let qtyAdults = 0;
+  let qtyKids = 0;
+  let totalQty = 0;
+
+  if (isMixedSizes) {
+    qtyAdults = parseInt(document.getElementById('qtyAdults').value) || 0;
+    qtyKids = parseInt(document.getElementById('qtyKids').value) || 0;
+    totalQty = qtyAdults + qtyKids;
+  } else {
+    totalQty = parseInt(document.getElementById('quantityInput').value) || 0;
+    qtyAdults = totalQty; // Todo adulto por defecto
+  }
+
   // Si faltan datos en el Step 2, mantener TODO en cero
-  if (!prodId || !techId || placeMult === null || qty <= 0 || designSelect === "") {
+  if (!prodId || !techId || placeMult === null || totalQty <= 0 || designSelect === "") {
     currentCalculation = null;
 
     document.getElementById('finalClientPrice').textContent = `$0.00`;
@@ -186,14 +245,18 @@ function calculateAll() {
 
   const product = products.find(p => p.id === prodId) || products[0];
   const technique = techniques.find(t => t.id === techId) || techniques[0];
-  const volMult = getVolumeEfficiencyMultiplier(qty);
+  const volMult = getVolumeEfficiencyMultiplier(totalQty);
 
-  // Cálculos base sin transporte/urgencia (ya que esos ahora son globales del pedido)
-  const totalBlankCost = product.blankCost * qty;
+  // Costo en Blanco Mixto (El niño cuesta 20% menos base)
+  const costAdultBlank = product.blankCost;
+  const costKidBlank = product.blankCost * 0.80; // 20% descuento para niños
+  const totalBlankCost = (costAdultBlank * qtyAdults) + (costKidBlank * qtyKids);
+
+  // La impresión y mano de obra cuesta lo mismo por ahora
   const unitSupplierCost = technique.supplierCost * placeMult * volMult;
-  const totalSupplierCost = unitSupplierCost * qty;
+  const totalSupplierCost = unitSupplierCost * totalQty;
   const unitInHouseCost = product.pressCost * (placeMult > 1.2 ? 1.35 : 1.0);
-  const totalInHouseCost = unitInHouseCost * qty;
+  const totalInHouseCost = unitInHouseCost * totalQty;
 
   const totalInternalCost = totalBlankCost + totalSupplierCost + totalInHouseCost + designCost;
   const subtotalClient = totalInternalCost * (1 + (marginPercent / 100));
@@ -201,14 +264,21 @@ function calculateAll() {
   const itbmsAmount = includeItbms ? subtotalClient * 0.07 : 0;
   const finalClientTotal = subtotalClient + itbmsAmount;
 
-  const unitClientPrice = finalClientTotal / qty;
-  const netProfit = subtotalClient - totalInternalCost; // Ganancia limpia base
+  const unitClientPrice = finalClientTotal / totalQty;
+  const netProfit = subtotalClient - totalInternalCost;
+
+  // Formato para Resumen WhatsApp / PDF (Distinguir si es mixto)
+  let qtyText = `${totalQty} unidades`;
+  if (isMixedSizes && qtyKids > 0) {
+    qtyText = `${totalQty} unds (${qtyAdults} Adulto / ${qtyKids} Niño)`;
+  }
 
   currentCalculation = {
     productName: product.name,
     techniqueName: technique.name,
     placementName: selectedOption ? selectedOption.text : '',
-    qty,
+    qty: totalQty,
+    qtyText: qtyText,
     finalClientTotal,
     subtotalClient,
     itbmsAmount,
@@ -218,11 +288,11 @@ function calculateAll() {
   };
 
   document.getElementById('finalClientPrice').textContent = `$${finalClientTotal.toFixed(2)}`;
-  document.getElementById('unitClientPrice').textContent = `$${unitClientPrice.toFixed(2)} c/u`;
+  document.getElementById('unitClientPrice').textContent = `Promedio: $${unitClientPrice.toFixed(2)} c/u`;
   document.getElementById('summaryProduct').textContent = product.name;
-  document.getElementById('summaryQty').textContent = `${qty} ${qty === 1 ? 'unidad' : 'unidades'}`;
+  document.getElementById('summaryQty').textContent = qtyText;
   document.getElementById('summaryTech').textContent = `${technique.name.split('(')[0]} (${selectedOption ? selectedOption.text.split('(')[0].trim() : ''})`;
-  document.getElementById('summaryDeposit').textContent = `$${finalClientTotal.toFixed(2)}`; // Ahora dice Subtotal del Item
+  document.getElementById('summaryDeposit').textContent = `$${finalClientTotal.toFixed(2)}`;
 
   const itbmsRow = document.getElementById('itbmsSummaryRow');
   if (includeItbms) {
@@ -233,7 +303,7 @@ function calculateAll() {
   }
 
   const discBadge = document.getElementById('discountBadge');
-  if (qty >= 12) discBadge.classList.remove('hidden');
+  if (totalQty >= 12) discBadge.classList.remove('hidden');
   else discBadge.classList.add('hidden');
 
   document.getElementById('marginBadge').textContent = `${marginPercent}%`;
@@ -252,8 +322,6 @@ function addItemToCart() {
   }
   cart.push({ id: Date.now(), ...currentCalculation });
   renderCart();
-
-  // Limpia todos los selectores automáticamente tras agregar
   resetItemForm();
 }
 
@@ -271,7 +339,6 @@ function renderCart() {
   const container = document.getElementById('cartContainer');
   const totalsBox = document.getElementById('cartTotalsBox');
 
-  // Obtener opciones globales
   const transSel = document.getElementById('transportSelect');
   const globalTransport = transSel && transSel.value !== "" ? parseFloat(transSel.value) : 0;
   const urgSel = document.getElementById('urgencySelect');
@@ -293,7 +360,7 @@ function renderCart() {
     return `
       <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-3 flex items-center justify-between gap-2">
         <div>
-          <p class="text-xs font-bold text-white">${item.qty}x ${item.productName}</p>
+          <p class="text-xs font-bold text-white">${item.qtyText} de ${item.productName}</p>
           <p class="text-[11px] text-slate-400">${item.techniqueName.split('(')[0]} • $${item.unitClientPrice.toFixed(2)} c/u</p>
         </div>
         <div class="flex items-center gap-3">
@@ -304,10 +371,8 @@ function renderCart() {
     `;
   }).join('');
 
-  // 1. Mostrar Subtotal de Artículos puros
   document.getElementById('cartItemsSubtotal').textContent = `$${itemsSubtotal.toFixed(2)}`;
 
-  // 2. Aplicar y mostrar Transporte Global
   const trRow = document.getElementById('cartTransportRow');
   if (globalTransport > 0) {
     trRow.classList.remove('hidden');
@@ -318,7 +383,6 @@ function renderCart() {
 
   const preUrgencyTotal = itemsSubtotal + globalTransport;
 
-  // 3. Aplicar y mostrar Urgencia Global (Aplica sobre el subtotal + transporte)
   const urgRow = document.getElementById('cartUrgencyRow');
   const urgencyAmount = preUrgencyTotal * globalUrgencyRate;
   if (urgencyAmount > 0) {
@@ -328,9 +392,8 @@ function renderCart() {
     urgRow.classList.add('hidden');
   }
 
-  // 4. Totales Finales
   const grandTotal = preUrgencyTotal + urgencyAmount;
-  const totalNetProfit = itemsProfit + urgencyAmount; // Consideramos el recargo express ganancia pura
+  const totalNetProfit = itemsProfit + urgencyAmount;
 
   document.getElementById('cartGrandTotal').textContent = `$${grandTotal.toFixed(2)}`;
   document.getElementById('cartDepositTotal').textContent = `$${(grandTotal * 0.5).toFixed(2)}`;
@@ -345,7 +408,6 @@ function printQuotePDF() {
   const contact = document.getElementById('clientContact')?.value.trim() || '';
   const project = document.getElementById('projectDesc').value.trim() || 'Servicio de Personalización JNX';
 
-  // Si no han agregado al carrito, pero tienen algo configurado, usar eso momentáneamente
   const itemsToPrint = cart.length > 0 ? cart : (currentCalculation ? [currentCalculation] : []);
 
   if (itemsToPrint.length === 0) {
@@ -353,7 +415,6 @@ function printQuotePDF() {
     return;
   }
 
-  // Variables Globales
   const transSel = document.getElementById('transportSelect');
   const globalTransport = transSel && transSel.value !== "" ? parseFloat(transSel.value) : 0;
   const urgSel = document.getElementById('urgencySelect');
@@ -378,7 +439,7 @@ function printQuotePDF() {
       const cleanPlace = item.placementName ? item.placementName.split('(')[0].trim() : '';
       return `
         <tr>
-          <td class="py-3.5 px-4 font-bold text-slate-900">${item.qty}</td>
+          <td class="py-3.5 px-4 font-bold text-slate-900">${item.qtyText}</td>
           <td class="py-3.5 px-4">
             <p class="font-bold text-slate-900 text-sm">${item.productName}</p>
             <p class="text-slate-600">Técnica: ${cleanTech} • Cobertura: ${cleanPlace}</p>
@@ -390,7 +451,6 @@ function printQuotePDF() {
     }).join('');
   }
 
-  // Desglose Final PDF
   if (document.getElementById('pdfSubtotal')) document.getElementById('pdfSubtotal').textContent = `$${itemsSubtotal.toFixed(2)}`;
 
   const pdfTransRow = document.getElementById('pdfTransportRow');
@@ -429,10 +489,8 @@ function copyWhatsAppQuote() {
     return;
   }
 
-  // Variables Globales
   const transSel = document.getElementById('transportSelect');
   const globalTransport = transSel && transSel.value !== "" ? parseFloat(transSel.value) : 0;
-  const transName = transSel && transSel.value !== "" && globalTransport > 0 ? transSel.options[transSel.selectedIndex].text : '';
 
   const urgSel = document.getElementById('urgencySelect');
   const globalUrgencyRate = urgSel && urgSel.value !== "" ? parseFloat(urgSel.value) : 0;
@@ -441,7 +499,7 @@ function copyWhatsAppQuote() {
   let lines = itemsToQuote.map(item => {
     itemsSubtotal += item.finalClientTotal;
     const techClean = item.techniqueName ? item.techniqueName.split('(')[0].trim() : '';
-    return `▪ *${item.qty}x ${item.productName}*\n   Trabajo: ${techClean}\n   Unitario: $${item.unitClientPrice.toFixed(2)} | Subtotal: *$${item.finalClientTotal.toFixed(2)}*`;
+    return `▪ *${item.qtyText} de ${item.productName}*\n   Trabajo: ${techClean}\n   Unitario: $${item.unitClientPrice.toFixed(2)} | Subtotal: *$${item.finalClientTotal.toFixed(2)}*`;
   }).join('\n\n');
 
   const urgencyAmount = (itemsSubtotal + globalTransport) * globalUrgencyRate;
