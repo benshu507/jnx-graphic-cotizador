@@ -1,20 +1,46 @@
-let products = JSON.parse(localStorage.getItem('jnx_products')) || DEFAULT_PRODUCTS;
-let techniques = JSON.parse(localStorage.getItem('jnx_techniques')) || TECHNIQUES;
+let products = JSON.parse(localStorage.getItem('jnx_products')) || JSON.parse(JSON.stringify(DEFAULT_PRODUCTS));
+let techniques = JSON.parse(localStorage.getItem('jnx_techniques')) || JSON.parse(JSON.stringify(TECHNIQUES));
+let supplierRates = JSON.parse(localStorage.getItem('jnx_supplier_rates')) || JSON.parse(JSON.stringify(DEFAULT_SUPPLIER_RATES));
+let inHouseCosts = JSON.parse(localStorage.getItem('jnx_inhouse_costs')) || JSON.parse(JSON.stringify(DEFAULT_INHOUSE_COSTS));
+
 let savedLogo = localStorage.getItem('jnx_custom_logo') || '';
 let internalMode = false;
 let includeItbms = false;
 let isMixedSizes = false;
 let cart = [];
 let currentCalculation = null;
-
-// Variable para rastrear si el usuario alteró el precio manualmente
 let manualPriceOverride = null;
+
+const SUPPLIER_LABELS = [
+  { key: 'dtf_yard', label: '1 Yarda DTF Textil ($/yd)' },
+  { key: 'dtf_half_yard', label: '1/2 Yarda DTF Textil' },
+  { key: 'uv_dtf_a4', label: 'A4 de UV DTF' },
+  { key: 'uv_dtf_a3', label: 'A3 de UV DTF' },
+  { key: 'uv_dtf_yard', label: 'Yarda UV DTF ($/yd)' },
+  { key: 'sub_sheet_a4', label: 'Impresión Papel Sublimación A4' },
+  { key: 'sub_sheet_a3', label: 'Impresión Papel Sublimación A3' },
+  { key: 'sub_yard', label: 'Yarda Papel Sublimación ($/yd)' },
+  { key: 'embroidery_small', label: 'Bordado Pecho / Gorra (c/u)' },
+  { key: 'embroidery_dual', label: 'Bordado Pecho + Manga (c/u)' },
+  { key: 'embroidery_setup', label: 'Ponchado / Matriz Bordado' },
+  { key: 'banner_sqft', label: 'Impresión Banner / Lona ($/pie²)' }
+];
+
+const INHOUSE_LABELS = [
+  { key: 'press_single', label: 'Planchado 1 Cara (Luz + Mano Obra)' },
+  { key: 'press_double', label: 'Planchado 2 Caras (Frente + Espalda)' },
+  { key: 'uv_application', label: 'Colocación Manual Sticker DTF UV' },
+  { key: 'banner_handling', label: 'Acabado / Empaque de Banner' }
+];
 
 window.addEventListener('DOMContentLoaded', () => {
   populateSelects();
   applySavedLogo();
   calculateAll();
   lucide.createIcons();
+
+  document.getElementById('designSelect').addEventListener('change', () => { manualPriceOverride = null; });
+  document.getElementById('profitMarginInput').addEventListener('input', () => { manualPriceOverride = null; });
 });
 
 function populateSelects() {
@@ -24,7 +50,7 @@ function populateSelects() {
   prodSelect.addEventListener('change', (e) => {
     updateTechniquesForProduct(e.target.value);
     checkIfTextile(e.target.value);
-    manualPriceOverride = null; // Reiniciar override al cambiar producto
+    manualPriceOverride = null;
     calculateAll();
   });
 
@@ -200,7 +226,6 @@ function toggleItbms() {
   calculateAll();
 }
 
-// FUNCION NUEVA: Se ejecuta al cambiar el número en el input del precio
 function applyManualPrice() {
   const manualInput = parseFloat(document.getElementById('unitClientPriceInput').value);
   if (!isNaN(manualInput) && manualInput > 0) {
@@ -213,14 +238,12 @@ function applyManualPrice() {
   calculateAll();
 }
 
-document.getElementById('designSelect').addEventListener('change', () => { manualPriceOverride = null; });
-document.getElementById('profitMarginInput').addEventListener('input', () => { manualPriceOverride = null; });
-
 function calculateAll() {
   const prodId = document.getElementById('productSelect').value;
   const techId = document.getElementById('techniqueSelect').value;
   const placementSelect = document.getElementById('placementSelect');
   const selectedOption = placementSelect.options[placementSelect.selectedIndex];
+  const variantId = selectedOption && !selectedOption.disabled ? selectedOption.value : null;
   const placeMult = selectedOption && !selectedOption.disabled ? parseFloat(selectedOption.getAttribute('data-mult')) || 1.0 : null;
   const designSelect = document.getElementById('designSelect').value;
 
@@ -237,7 +260,6 @@ function calculateAll() {
     qtyAdults = totalQty;
   }
 
-  // SI FALTAN DATOS
   if (!prodId || !techId || placeMult === null || totalQty <= 0 || designSelect === "") {
     currentCalculation = null;
 
@@ -272,16 +294,60 @@ function calculateAll() {
 
   const product = products.find(p => p.id === prodId) || products[0];
   const technique = techniques.find(t => t.id === techId) || techniques[0];
+  const variantObj = (technique.variants || []).find(v => v.id === variantId) || {};
   const volMult = getVolumeEfficiencyMultiplier(totalQty);
 
+  // 1. Costo de prendas en blanco
   const costAdultBlank = product.blankCost;
   const costKidBlank = product.blankCost * 0.80;
   const totalBlankCost = (costAdultBlank * qtyAdults) + (costKidBlank * qtyKids);
 
-  const unitSupplierCost = technique.supplierCost * placeMult * volMult;
-  const totalSupplierCost = unitSupplierCost * totalQty;
-  const unitInHouseCost = product.pressCost * (placeMult > 1.2 ? 1.35 : 1.0);
-  const totalInHouseCost = unitInHouseCost * totalQty;
+  // 2. Costo de Proveedor (Calculado con tus tarifas en Yardas / Hojas) y 3. Planchado en Casa
+  let totalSupplierCost = 0;
+  let totalInHouseCost = 0;
+
+  if (techId === 'dtf') {
+    const rawYards = totalQty * (variantObj.yardsPerUnit || 0.14) * 1.08;
+    if (rawYards <= 0.5) {
+      totalSupplierCost = supplierRates.dtf_half_yard;
+    } else {
+      totalSupplierCost = rawYards * supplierRates.dtf_yard;
+    }
+    const unitPress = variantObj.presses === 2 ? inHouseCosts.press_double : inHouseCosts.press_single;
+    totalInHouseCost = totalQty * unitPress;
+  } else if (techId === 'sublimacion_parcial') {
+    const costA4 = (variantObj.sheetsA4 || 0) * supplierRates.sub_sheet_a4;
+    const costA3 = (variantObj.sheetsA3 || 0) * supplierRates.sub_sheet_a3;
+    totalSupplierCost = totalQty * (costA4 + costA3) * volMult;
+    const unitPress = variantObj.presses === 2 ? inHouseCosts.press_double : inHouseCosts.press_single;
+    totalInHouseCost = totalQty * unitPress;
+  } else if (techId === 'sublimacion_full') {
+    const rawYards = totalQty * (variantObj.yardsPerUnit || 0.28);
+    totalSupplierCost = rawYards * supplierRates.sub_yard * volMult;
+    totalInHouseCost = totalQty * inHouseCosts.press_double;
+  } else if (techId === 'dtf_uv') {
+    const rawYardsUV = totalQty * (variantObj.yardsPerUnit || 0.06) * 1.10;
+    if (rawYardsUV <= 0.18) {
+      totalSupplierCost = supplierRates.uv_dtf_a4;
+    } else if (rawYardsUV <= 0.36) {
+      totalSupplierCost = supplierRates.uv_dtf_a3;
+    } else {
+      totalSupplierCost = rawYardsUV * supplierRates.uv_dtf_yard;
+    }
+    totalInHouseCost = totalQty * inHouseCosts.uv_application;
+  } else if (techId === 'bordado') {
+    const unitEmb = variantObj.type === 'dual' ? supplierRates.embroidery_dual : supplierRates.embroidery_small;
+    const setupFee = totalQty < 12 ? supplierRates.embroidery_setup : 0;
+    totalSupplierCost = (totalQty * unitEmb * volMult) + setupFee;
+    totalInHouseCost = totalQty * inHouseCosts.press_single;
+  } else if (techId === 'gran_formato') {
+    const sqft = variantObj.sqft || 6;
+    totalSupplierCost = totalQty * sqft * supplierRates.banner_sqft * volMult;
+    totalInHouseCost = totalQty * inHouseCosts.banner_handling;
+  } else {
+    totalSupplierCost = technique.supplierCost * placeMult * volMult * totalQty;
+    totalInHouseCost = product.pressCost * totalQty;
+  }
 
   const totalInternalCost = totalBlankCost + totalSupplierCost + totalInHouseCost + designCost;
 
@@ -290,10 +356,7 @@ function calculateAll() {
   let subtotalClient = 0;
   let itbmsAmount = 0;
 
-  // LÓGICA DE PRECIO MANUAL VS AUTOMÁTICO
   if (manualPriceOverride !== null) {
-    // Si el usuario escribió un precio, ese precio final ya incluye el ITBMS (si el switch está activo)
-    // porque el cliente final paga el Unitario X que dictó el vendedor.
     unitClientPrice = manualPriceOverride;
     finalClientTotal = unitClientPrice * totalQty;
 
@@ -305,12 +368,10 @@ function calculateAll() {
       itbmsAmount = 0;
     }
   } else {
-    // Cálculo Normal por Sistema
     subtotalClient = totalInternalCost * (1 + (marginPercent / 100));
     itbmsAmount = includeItbms ? subtotalClient * 0.07 : 0;
     finalClientTotal = subtotalClient + itbmsAmount;
     unitClientPrice = finalClientTotal / totalQty;
-    // Actualizamos el input para que muestre el cálculo sugerido
     document.getElementById('unitClientPriceInput').value = unitClientPrice.toFixed(2);
   }
 
@@ -336,7 +397,6 @@ function calculateAll() {
   };
 
   document.getElementById('finalClientPrice').textContent = `$${finalClientTotal.toFixed(2)}`;
-
   document.getElementById('summaryProduct').textContent = product.name;
   document.getElementById('summaryQty').textContent = qtyText;
   document.getElementById('summaryTech').textContent = `${technique.name.split('(')[0]} (${selectedOption ? selectedOption.text.split('(')[0].trim() : ''})`;
@@ -610,23 +670,47 @@ function toggleConfigModal() {
   if (modal.classList.contains('hidden')) {
     renderConfigInputs();
     modal.classList.remove('hidden');
+    lucide.createIcons();
   } else {
     modal.classList.add('hidden');
   }
 }
 
+// RENDERIZADO DEL MODAL EN 3 COLUMNAS ESTILO IMAGEN
 function renderConfigInputs() {
+  // Columna 1: Prendas en Blanco
   document.getElementById('modalProductsConfig').innerHTML = products.map((p, i) => `
-    <div class="bg-slate-800/70 p-2.5 rounded-xl border border-slate-700 flex items-center justify-between gap-2">
-      <span class="text-slate-200 font-medium truncate">${p.name}</span>
-      <input type="number" step="0.05" id="cfg_prod_${i}" value="${p.blankCost}" class="w-20 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-right text-white font-bold">
+    <div class="flex items-center justify-between gap-3 bg-slate-950/70 p-2.5 rounded-xl border border-slate-800/90">
+      <span class="text-xs font-medium text-slate-300 truncate">${p.name}</span>
+      <div class="relative w-24 shrink-0">
+        <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-500">$</span>
+        <input type="number" step="0.05" min="0" id="cfg_prod_${i}" value="${p.blankCost}"
+          class="w-full bg-slate-900 border border-slate-700 rounded-lg py-1.5 pl-6 pr-2.5 text-right text-xs font-bold text-white focus:border-cyan-400 focus:outline-none">
+      </div>
     </div>
   `).join('');
 
-  document.getElementById('modalTechConfig').innerHTML = techniques.map((t, i) => `
-    <div class="bg-slate-800/70 p-2.5 rounded-xl border border-slate-700 flex items-center justify-between gap-2">
-      <span class="text-slate-200 font-medium truncate">${t.name.split('(')[0]}</span>
-      <input type="number" step="0.05" id="cfg_tech_${i}" value="${t.supplierCost}" class="w-20 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-right text-white font-bold">
+  // Columna 2: Proveedores Externos (Yardas y Hojas)
+  document.getElementById('modalSupplierConfig').innerHTML = SUPPLIER_LABELS.map(({ key, label }) => `
+    <div class="flex items-center justify-between gap-3 bg-slate-950/70 p-2.5 rounded-xl border border-slate-800/90">
+      <span class="text-xs font-medium text-slate-300 truncate">${label}</span>
+      <div class="relative w-24 shrink-0">
+        <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-500">$</span>
+        <input type="number" step="0.05" min="0" id="cfg_sup_${key}" value="${supplierRates[key]}"
+          class="w-full bg-slate-900 border border-slate-700 rounded-lg py-1.5 pl-6 pr-2.5 text-right text-xs font-bold text-white focus:border-fuchsia-400 focus:outline-none">
+      </div>
+    </div>
+  `).join('');
+
+  // Columna 3: Planchado en Casa
+  document.getElementById('modalInHouseConfig').innerHTML = INHOUSE_LABELS.map(({ key, label }) => `
+    <div class="flex items-center justify-between gap-3 bg-slate-950/70 p-2.5 rounded-xl border border-slate-800/90">
+      <span class="text-xs font-medium text-slate-300 truncate">${label}</span>
+      <div class="relative w-24 shrink-0">
+        <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-500">$</span>
+        <input type="number" step="0.05" min="0" id="cfg_inh_${key}" value="${inHouseCosts[key]}"
+          class="w-full bg-slate-900 border border-slate-700 rounded-lg py-1.5 pl-6 pr-2.5 text-right text-xs font-bold text-white focus:border-amber-400 focus:outline-none">
+      </div>
     </div>
   `).join('');
 }
@@ -636,26 +720,34 @@ function saveCustomCosts() {
     const val = parseFloat(document.getElementById(`cfg_prod_${i}`).value);
     if (!isNaN(val)) p.blankCost = val;
   });
-  techniques.forEach((t, i) => {
-    const val = parseFloat(document.getElementById(`cfg_tech_${i}`).value);
-    if (!isNaN(val)) t.supplierCost = val;
+
+  SUPPLIER_LABELS.forEach(({ key }) => {
+    const val = parseFloat(document.getElementById(`cfg_sup_${key}`).value);
+    if (!isNaN(val)) supplierRates[key] = val;
+  });
+
+  INHOUSE_LABELS.forEach(({ key }) => {
+    const val = parseFloat(document.getElementById(`cfg_inh_${key}`).value);
+    if (!isNaN(val)) inHouseCosts[key] = val;
   });
 
   localStorage.setItem('jnx_products', JSON.stringify(products));
-  localStorage.setItem('jnx_techniques', JSON.stringify(techniques));
+  localStorage.setItem('jnx_supplier_rates', JSON.stringify(supplierRates));
+  localStorage.setItem('jnx_inhouse_costs', JSON.stringify(inHouseCosts));
 
-  populateSelects();
   calculateAll();
   toggleConfigModal();
 }
 
 function resetDefaultCosts() {
   localStorage.removeItem('jnx_products');
-  localStorage.removeItem('jnx_techniques');
-  products = JSON.parse(JSON.stringify(DEFAULT_PRODUCTS));
-  techniques = JSON.parse(JSON.stringify(TECHNIQUES));
+  localStorage.removeItem('jnx_supplier_rates');
+  localStorage.removeItem('jnx_inhouse_costs');
 
-  populateSelects();
+  products = JSON.parse(JSON.stringify(DEFAULT_PRODUCTS));
+  supplierRates = JSON.parse(JSON.stringify(DEFAULT_SUPPLIER_RATES));
+  inHouseCosts = JSON.parse(JSON.stringify(DEFAULT_INHOUSE_COSTS));
+
   renderConfigInputs();
   calculateAll();
 }
