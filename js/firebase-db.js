@@ -15,11 +15,11 @@ let db = null;
 
 try {
   if (typeof firebase !== 'undefined' && firebaseConfig.apiKey !== "PEGA_AQUI_TU_API_KEY") {
-    firebase.initializeApp(firebaseConfig);
+    if (!firebase.apps.length) {
+      firebase.initializeApp(firebaseConfig);
+    }
     db = firebase.firestore();
     console.log("✅ Conectado a Firebase Firestore - JNX Graphic");
-  } else {
-    console.warn("⚠️ Firebase aún no tiene las credenciales configuradas en js/firebase-db.js");
   }
 } catch (err) {
   console.error("Error inicializando Firebase:", err);
@@ -31,33 +31,38 @@ try {
 async function getNextFolioSequential() {
   const counterRef = db.collection("config_jnx").doc("contadores");
 
-  return await db.runTransaction(async (transaction) => {
-    const doc = await transaction.get(counterRef);
-    let currentNumber = 0;
+  try {
+    const doc = await counterRef.get();
+    let nextNumber = 1;
 
-    if (doc.exists && doc.data().ultimoFolio) {
-      currentNumber = doc.data().ultimoFolio;
+    if (doc.exists && typeof doc.data().ultimoFolio === 'number') {
+      nextNumber = doc.data().ultimoFolio + 1;
     } else {
-      // Si es la primera vez, busca si ya existía alguna cotización previa
+      // Si el contador no existe aún, cuenta los registros existentes
       const snap = await db.collection("cotizaciones_jnx").get();
-      currentNumber = snap.size;
+      nextNumber = snap.size + 1;
     }
 
-    const nextNumber = currentNumber + 1;
-    transaction.set(counterRef, { ultimoFolio: nextNumber }, { merge: true });
+    // Actualiza el contador central
+    await counterRef.set({ ultimoFolio: nextNumber }, { merge: true });
 
-    // Rellena con ceros hasta 5 dígitos: JNX-00001, JNX-00002, etc.
+    // Genera el formato de 5 dígitos: JNX-00001, JNX-00002...
     const padded = String(nextNumber).padStart(5, '0');
     return `JNX-${padded}`;
-  });
+  } catch (error) {
+    console.error("Error obteniendo consecutivo, usando fallback:", error);
+    const snap = await db.collection("cotizaciones_jnx").get();
+    const count = snap.size + 1;
+    return `JNX-${String(count).padStart(5, '0')}`;
+  }
 }
 
 // ============================================================================
-// GUARDAR COTIZACIÓN EN LA NUBE Y LIMPIAR PANTALLA
+// GUARDAR COTIZACIÓN EN LA NUBE, ALERTA Y LIMPIEZA
 // ============================================================================
 async function saveQuoteToFirebase() {
   if (!db) {
-    alert("⚠️ Error de conexión con Firebase. Verifica tus credenciales.");
+    alert("⚠️ Error de conexión con Firebase. Verifica tu conexión a internet.");
     return;
   }
 
@@ -67,7 +72,7 @@ async function saveQuoteToFirebase() {
   const itemsToSave = cart.length > 0 ? cart : (currentCalculation ? [currentCalculation] : []);
 
   if (itemsToSave.length === 0) {
-    alert("Por favor, configura o agrega al menos un producto antes de guardar la cotización.");
+    alert("⚠️ Por favor, configura o agrega al menos un producto antes de guardar la cotización.");
     return;
   }
 
@@ -88,14 +93,14 @@ async function saveQuoteToFirebase() {
   const totalNetProfit = itemsProfit + urgencyAmount;
 
   const btnSave = document.getElementById('btnSaveCloudText');
-  if (btnSave) btnSave.textContent = "Generando folio y guardando...";
+  if (btnSave) btnSave.textContent = "Guardando en la nube...";
 
   try {
-    // 1. Obtener el siguiente consecutivo atómico en Firebase
+    // 1. Obtener el siguiente consecutivo (JNX-00001, JNX-00002...)
     const quoteFolio = await getNextFolioSequential();
     const now = new Date();
 
-    // 2. Guardar en Firestore con status 'Activo'
+    // 2. Guardar en Firestore con estado 'Activo'
     await db.collection("cotizaciones_jnx").add({
       folio: quoteFolio,
       status: 'Activo', // 'Activo' | 'Cancelado'
@@ -114,40 +119,39 @@ async function saveQuoteToFirebase() {
     });
 
     if (btnSave) {
-      btnSave.textContent = `¡Guardada como ${quoteFolio}!`;
-      setTimeout(() => { btnSave.textContent = "Guardar Cotización en la Nube (Firebase)"; }, 2500);
+      btnSave.textContent = "Guardar Cotización en la Nube (Firebase)";
     }
 
-    // 3. LIMPIEZA COMPLETA DE PANTALLA
+    // 3. Cuadro de diálogo formal de confirmación
+    alert(`✅ ¡Cotización registrada con éxito!\n\nFolio asignado: ${quoteFolio}\nCliente: ${client}\nTotal: $${grandTotal.toFixed(2)}`);
+
+    // 4. Limpieza total de pantalla
     clearFullQuoterScreen();
 
   } catch (error) {
     console.error("Error al guardar en Firebase:", error);
-    alert("Error al guardar en Firebase: " + error.message);
+    alert("❌ Error al guardar en Firebase: " + error.message);
     if (btnSave) btnSave.textContent = "Guardar Cotización en la Nube (Firebase)";
   }
 }
 
-// Función que deja en blanco y en 0.00 toda la pantalla
+// Función para reiniciar todos los campos a $0.00
 function clearFullQuoterScreen() {
-  // Limpia datos del cliente
   document.getElementById('clientName').value = "";
   if (document.getElementById('clientContact')) document.getElementById('clientContact').value = "";
   document.getElementById('projectDesc').value = "";
 
-  // Limpia selectores de logística y urgencia
   const transSel = document.getElementById('transportSelect');
   if (transSel) transSel.value = "";
   const urgSel = document.getElementById('urgencySelect');
   if (urgSel) urgSel.value = "";
 
-  // Vacía el carrito acumulado y resetea formulario del producto
   clearCart();
   resetItemForm();
 }
 
 // ============================================================================
-// HISTORIAL DE COTIZACIONES (CONSULTA, CARGA Y CANCELACIÓN)
+// HISTORIAL DE COTIZACIONES
 // ============================================================================
 async function toggleHistoryModal() {
   const modal = document.getElementById('historyModal');
@@ -163,7 +167,7 @@ async function toggleHistoryModal() {
 async function loadQuotesFromFirebase() {
   const container = document.getElementById('historyListContainer');
   if (!db) {
-    container.innerHTML = `<div class="p-6 text-center text-amber-400 text-xs">⚠️ Configura primero tus credenciales en <b>js/firebase-db.js</b>.</div>`;
+    container.innerHTML = `<div class="p-6 text-center text-amber-400 text-xs">⚠️ Configura primero tus credenciales de Firebase.</div>`;
     return;
   }
 
@@ -246,7 +250,6 @@ function restoreQuoteFromCloud(index) {
   toggleHistoryModal();
 }
 
-// En lugar de borrar el documento, se le coloca status: 'Cancelado'
 async function cancelQuoteInCloud(docId, folio) {
   if (!confirm(`¿Deseas marcar la cotización ${folio} como CANCELADA?\n(El consecutivo se mantendrá y no se perderá la correlación numérica).`)) return;
 
