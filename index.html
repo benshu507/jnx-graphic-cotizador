@@ -570,6 +570,7 @@
 
 
   <!-- MODAL DE HISTORIAL DE COTIZACIONES EN FIREBASE -->
+  <!-- MODAL DE HISTORIAL DE COTIZACIONES EN FIREBASE CON PESTAÑAS -->
   <div id="historyModal"
     class="no-print hidden fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4">
     <div
@@ -580,15 +581,40 @@
             <i data-lucide="database" class="w-5 h-5 text-cyan-400"></i>
             Historial de Cotizaciones en la Nube (Firebase)
           </h3>
-          <p class="text-xs text-slate-400">Consulta o vuelve a cargar cualquier cotización guardada anteriormente.</p>
+          <p class="text-xs text-slate-400">Gestiona tus cotizaciones por estado y genera sus comprobantes en PDF.</p>
         </div>
         <button onclick="toggleHistoryModal()"
-          class="p-2 rounded-xl bg-slate-900 text-slate-400 hover:text-white border border-slate-800">
+          class="p-2 rounded-xl bg-slate-900 text-slate-400 hover:text-white border border-slate-800 transition">
           <i data-lucide="x" class="w-5 h-5"></i>
         </button>
       </div>
 
-      <div id="historyListContainer" class="space-y-3 max-h-[60vh] overflow-y-auto pr-1"></div>
+      <!-- 4 PESTAÑAS DE FILTRO -->
+      <div class="flex flex-wrap gap-2 border-b border-slate-800/80 pb-3">
+        <button onclick="switchHistoryTab('activos')" id="tab_activos"
+          class="history-tab px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20">
+          <span>Activos</span>
+          <span id="badge_activos" class="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-950/30 text-current">0</span>
+        </button>
+        <button onclick="switchHistoryTab('vencidos')" id="tab_vencidos"
+          class="history-tab px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 bg-slate-900 text-slate-400 border border-slate-800 hover:text-slate-200">
+          <span>Vencidos (>3 días)</span>
+          <span id="badge_vencidos" class="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-800 text-current">0</span>
+        </button>
+        <button onclick="switchHistoryTab('pagados')" id="tab_pagados"
+          class="history-tab px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 bg-slate-900 text-slate-400 border border-slate-800 hover:text-slate-200">
+          <span>Pagados</span>
+          <span id="badge_pagados" class="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-800 text-current">0</span>
+        </button>
+        <button onclick="switchHistoryTab('cancelados')" id="tab_cancelados"
+          class="history-tab px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 bg-slate-900 text-slate-400 border border-slate-800 hover:text-slate-200">
+          <span>Cancelados</span>
+          <span id="badge_cancelados" class="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-800 text-current">0</span>
+        </button>
+      </div>
+
+      <!-- LISTA DE COTIZACIONES FILTRADAS -->
+      <div id="historyListContainer" class="space-y-3 max-h-[58vh] overflow-y-auto pr-1"></div>
     </div>
   </div>
 
