@@ -538,6 +538,13 @@ function printQuotePDF() {
   if (document.getElementById('pdfClientContact')) document.getElementById('pdfClientContact').textContent = contact ? `Contacto / RUC: ${contact}` : '';
   if (document.getElementById('pdfProjectDesc')) document.getElementById('pdfProjectDesc').textContent = project;
 
+  const deliveryVal = document.getElementById('deliveryDate')?.value || '';
+  if (document.getElementById('pdfDeliveryDate')) {
+    document.getElementById('pdfDeliveryDate').textContent = deliveryVal ? `Entrega estimada: ${deliveryVal}` : '';
+  }
+  if (document.getElementById('pdfDepositLabel')) document.getElementById('pdfDepositLabel').textContent = 'Abono 50% para iniciar:';
+  if (document.getElementById('pdfBalanceRow')) document.getElementById('pdfBalanceRow').classList.add('hidden');
+
   let itemsSubtotal = 0;
   const tbody = document.getElementById('pdfTableBody');
   if (tbody) {
@@ -624,6 +631,7 @@ function copyWhatsAppQuote() {
   const text = `*COTIZACIÓN OFICIAL - JNX GRAPHIC* 🎨\n` +
     `👤 *Cliente:* ${client}\n` +
     (project ? `📌 *Proyecto:* ${project}\n` : '') +
+    (document.getElementById('deliveryDate')?.value ? `📅 *Entrega estimada:* ${document.getElementById('deliveryDate').value}\n` : '') +
     `----------------------------------\n` +
     `${lines}\n` +
     `----------------------------------` +
@@ -751,3 +759,19 @@ function resetDefaultCosts() {
   renderConfigInputs();
   calculateAll();
 }
+
+function toggleHeaderDropdown() {
+  const menu = document.getElementById('headerDropdownMenu');
+  if (menu) {
+    menu.classList.toggle('hidden');
+  }
+}
+
+// Cerrar el menú automáticamente si se hace clic fuera de él
+document.addEventListener('click', (e) => {
+  const wrapper = document.getElementById('headerMenuWrapper');
+  const menu = document.getElementById('headerDropdownMenu');
+  if (wrapper && menu && !wrapper.contains(e.target)) {
+    menu.classList.add('hidden');
+  }
+});

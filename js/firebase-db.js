@@ -1,5 +1,5 @@
 // ============================================================================
-// CONEXIÓN A FIREBASE FIRESTORE - JNX GRAPHIC
+// CONEXIÓN A FIREBASE FIRESTORE Y AUTH - JNX GRAPHIC
 // ============================================================================
 
 const firebaseConfig = {
@@ -12,9 +12,11 @@ const firebaseConfig = {
 };
 
 let db = null;
-let currentHistoryTab = 'activos'; // 'activos' | 'vencidos' | 'pagados' | 'cancelados'
+let auth = null;
+let currentHistoryTab = 'activos'; // 'activos' | 'produccion' | 'vencidos' | 'pagados' | 'cancelados'
 window.loadedCloudQuotes = [];
 window.loadedClients = [];
+let selectedDirectoryClientId = null;
 
 try {
   if (typeof firebase !== 'undefined' && firebaseConfig.apiKey !== "PEGA_AQUI_TU_API_KEY") {
@@ -22,17 +24,76 @@ try {
       firebase.initializeApp(firebaseConfig);
     }
     db = firebase.firestore();
-    console.log("✅ Conectado a Firebase Firestore - JNX Graphic");
+    if (firebase.auth) {
+      auth = firebase.auth();
+    }
+    console.log("✅ Conectado a Firebase Firestore & Auth - JNX Graphic");
   }
 } catch (err) {
   console.error("Error inicializando Firebase:", err);
 }
 
-// Cargar clientes en memoria al iniciar para autocompletado instantáneo
-window.addEventListener('DOMContentLoaded', () => {
-  loadClientsFromFirebase();
+if (auth) {
+  auth.onAuthStateChanged((user) => {
+    const loginScreen = document.getElementById('loginScreen');
+    const appWrapper = document.getElementById('mainAppWrapper');
 
-  // Cerrar lista desplegable si el usuario hace clic fuera
+    if (user) {
+      if (loginScreen) loginScreen.classList.add('hidden');
+      if (appWrapper) appWrapper.classList.remove('hidden');
+      loadClientsFromFirebase();
+    } else {
+      if (loginScreen) loginScreen.classList.remove('hidden');
+      if (appWrapper) appWrapper.classList.add('hidden');
+    }
+  });
+}
+
+async function handleAdminLogin(event) {
+  event.preventDefault();
+  const errorEl = document.getElementById('loginErrorMsg');
+  const btn = document.getElementById('btnLoginSubmit');
+
+  if (!auth) return;
+
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+
+  if (errorEl) errorEl.classList.add('hidden');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Verificando acceso...";
+  }
+
+  try {
+    await auth.signInWithEmailAndPassword(email, password);
+  } catch (err) {
+    let friendlyMsg = "Correo o contraseña incorrectos. Verifica tus datos.";
+    if (err.code === 'auth/operation-not-allowed') {
+      friendlyMsg = "⚠️ Activa Correo/Contraseña en Firebase Console (Authentication > Sign-in method).";
+    } else if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') {
+      friendlyMsg = "Usuario o contraseña inválidos.";
+    }
+    if (errorEl) {
+      errorEl.textContent = friendlyMsg;
+      errorEl.classList.remove('hidden');
+    }
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = "Ingresar al Cotizador";
+    }
+  }
+}
+
+async function handleAdminLogout() {
+  if (!auth) return;
+  if (confirm("¿Deseas cerrar tu sesión en JNX Graphic?")) {
+    await auth.signOut();
+  }
+}
+
+window.addEventListener('DOMContentLoaded', () => {
   document.addEventListener('click', (e) => {
     const input = document.getElementById('clientName');
     const list = document.getElementById('clientAutocompleteList');
@@ -43,13 +104,12 @@ window.addEventListener('DOMContentLoaded', () => {
 });
 
 // ============================================================================
-// GESTIÓN DE CLIENTES (GUARDAR, BUSCAR Y AUTOCOMPLETAR)
+// GESTIÓN DE CLIENTES
 // ============================================================================
 function toggleClientModal() {
   const modal = document.getElementById('clientModal');
   if (modal.classList.contains('hidden')) {
     document.getElementById('newClientForm').reset();
-    // Si ya escribió un nombre en el input principal, pre-llenarlo en el modal
     const currentTypedName = document.getElementById('clientName').value.trim();
     if (currentTypedName) {
       document.getElementById('newClientName').value = currentTypedName;
@@ -75,10 +135,7 @@ async function loadClientsFromFirebase() {
 
 async function saveNewClientToFirebase(event) {
   event.preventDefault();
-  if (!db) {
-    alert("⚠️ Error de conexión con Firebase.");
-    return;
-  }
+  if (!db) return;
 
   const name = document.getElementById('newClientName').value.trim();
   const phone = document.getElementById('newClientPhone').value.trim();
@@ -102,13 +159,7 @@ async function saveNewClientToFirebase(event) {
   try {
     const now = new Date();
     const clientData = {
-      name,
-      phone,
-      ruc,
-      email,
-      clientType,
-      address,
-      notes,
+      name, phone, ruc, email, clientType, address, notes,
       createdAt: firebase.firestore.FieldValue.serverTimestamp(),
       dateString: now.toLocaleDateString('es-PA', { year: 'numeric', month: 'short', day: 'numeric' })
     };
@@ -116,17 +167,13 @@ async function saveNewClientToFirebase(event) {
     const docRef = await db.collection("clientes_jnx").add(clientData);
     const savedClient = { id: docRef.id, ...clientData };
 
-    // Actualizar memoria local
     window.loadedClients.push(savedClient);
     window.loadedClients.sort((a, b) => a.name.localeCompare(b.name));
 
-    // Seleccionar automáticamente este cliente recién creado en la cotización actual
     selectClientFromAutocomplete(savedClient);
-
     toggleClientModal();
-    alert(`✅ Cliente "${name}" guardado exitosamente en la base de datos.`);
+    alert(`✅ Cliente "${name}" guardado exitosamente.`);
   } catch (error) {
-    console.error("Error guardando cliente:", error);
     alert("❌ Error al guardar el cliente: " + error.message);
   } finally {
     if (btnSubmit) {
@@ -138,7 +185,6 @@ async function saveNewClientToFirebase(event) {
 }
 
 function handleClientSearchInput(query) {
-  // Si el usuario edita el texto manualmente, limpiar el ID vinculado hasta que seleccione uno
   document.getElementById('selectedClientId').value = "";
   const badge = document.getElementById('clientLinkedBadge');
   if (badge) badge.classList.add('hidden');
@@ -187,16 +233,13 @@ function handleClientSearchInput(query) {
 
 function selectClientById(clientId) {
   const client = window.loadedClients.find(c => c.id === clientId);
-  if (client) {
-    selectClientFromAutocomplete(client);
-  }
+  if (client) selectClientFromAutocomplete(client);
 }
 
 function selectClientFromAutocomplete(client) {
   document.getElementById('clientName').value = client.name || '';
   document.getElementById('selectedClientId').value = client.id || '';
 
-  // Formatear Teléfono / RUC para el campo de contacto
   const contactParts = [];
   if (client.phone) contactParts.push(client.phone);
   if (client.ruc) contactParts.push(`RUC: ${client.ruc}`);
@@ -210,37 +253,30 @@ function selectClientFromAutocomplete(client) {
 }
 
 // ============================================================================
-// GENERADOR DE CONSECUTIVO SECUENCIAL (JNX-00001, JNX-00002...)
+// CONSECUTIVO SECUENCIAL Y GUARDADO DE COTIZACIÓN
 // ============================================================================
 async function getNextFolioSequential() {
   const counterRef = db.collection("config_jnx").doc("contadores");
-
   try {
     const doc = await counterRef.get();
     let nextNumber = 1;
-
     if (doc.exists && typeof doc.data().ultimoFolio === 'number') {
       nextNumber = doc.data().ultimoFolio + 1;
     } else {
       const snap = await db.collection("cotizaciones_jnx").get();
       nextNumber = snap.size + 1;
     }
-
     await counterRef.set({ ultimoFolio: nextNumber }, { merge: true });
     return `JNX-${String(nextNumber).padStart(5, '0')}`;
   } catch (error) {
-    console.error("Error obteniendo consecutivo, usando fallback:", error);
     const snap = await db.collection("cotizaciones_jnx").get();
     return `JNX-${String(snap.size + 1).padStart(5, '0')}`;
   }
 }
 
-// ============================================================================
-// GUARDAR COTIZACIÓN EN LA NUBE
-// ============================================================================
 async function saveQuoteToFirebase() {
   if (!db) {
-    alert("⚠️ Error de conexión con Firebase. Verifica tu conexión a internet.");
+    alert("⚠️ Error de conexión con Firebase.");
     return;
   }
 
@@ -248,6 +284,7 @@ async function saveQuoteToFirebase() {
   const clientId = document.getElementById('selectedClientId')?.value.trim() || null;
   const contact = document.getElementById('clientContact')?.value.trim() || '';
   const project = document.getElementById('projectDesc').value.trim() || 'Sin referencia';
+  const deliveryDate = document.getElementById('deliveryDate')?.value || '';
   const itemsToSave = cart.length > 0 ? cart : (currentCalculation ? [currentCalculation] : []);
 
   if (itemsToSave.length === 0) {
@@ -280,31 +317,31 @@ async function saveQuoteToFirebase() {
 
     await db.collection("cotizaciones_jnx").add({
       folio: quoteFolio,
-      status: 'Activo', // 'Activo' | 'Pagado' | 'Cancelado'
-      clientId: clientId, // Vínculo directo con la colección clientes_jnx
+      status: 'Activo', // 'Activo' | 'En Producción' | 'Pagado' | 'Cancelado'
+      clientId: clientId,
       clientName: client,
       clientContact: contact,
       projectDesc: project,
+      deliveryDate: deliveryDate,
       items: itemsToSave,
       transportCost: globalTransport,
       urgencyRate: globalUrgencyRate,
       urgencyAmount: urgencyAmount,
       grandTotal: Number(grandTotal.toFixed(2)),
       deposit50: Number((grandTotal * 0.5).toFixed(2)),
+      amountPaid: 0,
+      balanceDue: Number(grandTotal.toFixed(2)),
+      payments: [],
       netProfit: Number(totalNetProfit.toFixed(2)),
       createdAt: firebase.firestore.FieldValue.serverTimestamp(),
       dateString: now.toLocaleDateString('es-PA', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
       timestampMs: now.getTime()
     });
 
-    if (btnSave) {
-      btnSave.textContent = "Guardar Cotización en la Nube (Firebase)";
-    }
-
+    if (btnSave) btnSave.textContent = "Guardar Cotización en la Nube (Firebase)";
     alert(`✅ ¡Cotización registrada con éxito!\n\nFolio: ${quoteFolio}\nCliente: ${client}\nTotal: $${grandTotal.toFixed(2)}`);
     clearFullQuoterScreen();
   } catch (error) {
-    console.error("Error al guardar en Firebase:", error);
     alert("❌ Error al guardar en Firebase: " + error.message);
     if (btnSave) btnSave.textContent = "Guardar Cotización en la Nube (Firebase)";
   }
@@ -316,6 +353,7 @@ function clearFullQuoterScreen() {
   if (document.getElementById('clientLinkedBadge')) document.getElementById('clientLinkedBadge').classList.add('hidden');
   if (document.getElementById('clientContact')) document.getElementById('clientContact').value = "";
   document.getElementById('projectDesc').value = "";
+  if (document.getElementById('deliveryDate')) document.getElementById('deliveryDate').value = "";
 
   const transSel = document.getElementById('transportSelect');
   if (transSel) transSel.value = "";
@@ -327,7 +365,7 @@ function clearFullQuoterScreen() {
 }
 
 // ============================================================================
-// HISTORIAL POR PESTAÑAS (ACTIVOS, VENCIDOS, PAGADOS, CANCELADOS)
+// HISTORIAL CON 5 PESTAÑAS (ACTIVOS, EN PRODUCCIÓN, VENCIDOS, PAGADOS, CANCELADOS)
 // ============================================================================
 async function toggleHistoryModal() {
   const modal = document.getElementById('historyModal');
@@ -342,9 +380,10 @@ async function toggleHistoryModal() {
 function switchHistoryTab(tabName) {
   currentHistoryTab = tabName;
 
-  const tabs = ['activos', 'vencidos', 'pagados', 'cancelados'];
+  const tabs = ['activos', 'produccion', 'vencidos', 'pagados', 'cancelados'];
   tabs.forEach(t => {
     const btn = document.getElementById(`tab_${t}`);
+    if (!btn) return;
     if (t === tabName) {
       btn.className = "history-tab px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20";
     } else {
@@ -357,18 +396,15 @@ function switchHistoryTab(tabName) {
 
 async function loadQuotesFromFirebase() {
   const container = document.getElementById('historyListContainer');
-  if (!db) {
-    container.innerHTML = `<div class="p-6 text-center text-amber-400 text-xs">⚠️ Configura primero tus credenciales de Firebase.</div>`;
-    return;
-  }
+  if (!db) return;
 
   container.innerHTML = `<div class="p-6 text-center text-slate-400 text-xs">Cargando cotizaciones desde Firebase...</div>`;
 
   try {
-    const snapshot = await db.collection("cotizaciones_jnx").orderBy("createdAt", "desc").limit(60).get();
+    const snapshot = await db.collection("cotizaciones_jnx").orderBy("createdAt", "desc").limit(80).get();
     if (snapshot.empty) {
-      container.innerHTML = `<div class="p-6 text-center text-slate-500 text-xs">Aún no hay cotizaciones guardadas en la base de datos.</div>`;
-      updateTabBadges([], [], [], []);
+      container.innerHTML = `<div class="p-6 text-center text-slate-500 text-xs">Aún no hay cotizaciones guardadas.</div>`;
+      updateTabBadges([], [], [], [], []);
       return;
     }
 
@@ -378,8 +414,20 @@ async function loadQuotesFromFirebase() {
 
     renderFilteredQuotes();
   } catch (error) {
-    console.error("Error cargando historial:", error);
-    container.innerHTML = `<div class="p-6 text-center text-rose-400 text-xs">Error al conectar con Firestore: ${error.message}</div>`;
+    container.innerHTML = `<div class="p-6 text-center text-rose-400 text-xs">Error al conectar: ${error.message}</div>`;
+  }
+}
+
+function getDeliveryAlertBadge(deliveryDateStr, status) {
+  if (!deliveryDateStr || status === 'Pagado' || status === 'Cancelado') return '';
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  if (deliveryDateStr < todayStr) {
+    return `<span class="text-[10px] font-extrabold px-2 py-0.5 rounded bg-rose-500/20 text-rose-400 border border-rose-500/40 animate-pulse">⚠️ Entrega Atrasada (${deliveryDateStr})</span>`;
+  } else if (deliveryDateStr === todayStr) {
+    return `<span class="text-[10px] font-extrabold px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">🔥 Entrega HOY</span>`;
+  } else {
+    return `<span class="text-[10px] font-semibold px-2 py-0.5 rounded bg-slate-800 text-cyan-300 border border-slate-700">📅 Entrega: ${deliveryDateStr}</span>`;
   }
 }
 
@@ -392,6 +440,7 @@ function renderFilteredQuotes() {
 
   const cancelados = [];
   const pagados = [];
+  const produccion = [];
   const vencidos = [];
   const activos = [];
 
@@ -404,6 +453,8 @@ function renderFilteredQuotes() {
       cancelados.push(q);
     } else if (status === 'Pagado') {
       pagados.push(q);
+    } else if (status === 'En Producción') {
+      produccion.push(q);
     } else if (diffMs > threeDaysMs) {
       vencidos.push(q);
     } else if (diffMs <= thirtyDaysMs) {
@@ -413,10 +464,11 @@ function renderFilteredQuotes() {
     }
   });
 
-  updateTabBadges(activos, vencidos, pagados, cancelados);
+  updateTabBadges(activos, produccion, vencidos, pagados, cancelados);
 
   let currentList = [];
   if (currentHistoryTab === 'activos') currentList = activos;
+  else if (currentHistoryTab === 'produccion') currentList = produccion;
   else if (currentHistoryTab === 'vencidos') currentList = vencidos;
   else if (currentHistoryTab === 'pagados') currentList = pagados;
   else if (currentHistoryTab === 'cancelados') currentList = cancelados;
@@ -429,10 +481,14 @@ function renderFilteredQuotes() {
   container.innerHTML = currentList.map(q => {
     const isCancelled = q.status === 'Cancelado';
     const isPaid = q.status === 'Pagado';
+    const isInProduction = q.status === 'En Producción';
     const isExpired = currentHistoryTab === 'vencidos';
 
+    const grandTotal = Number(q.grandTotal || 0);
+    const amountPaid = isPaid ? grandTotal : Number(q.amountPaid || 0);
+    const balanceDue = isPaid ? 0 : Math.max(0, grandTotal - amountPaid);
+
     let badgeColor = "bg-cyan-500/15 text-cyan-400 border border-cyan-500/30";
-    let badgeText = q.folio || 'S/N';
     let statusLabel = "";
 
     if (isCancelled) {
@@ -440,34 +496,45 @@ function renderFilteredQuotes() {
       statusLabel = '<span class="text-[10px] uppercase font-bold text-rose-400 bg-rose-950 px-2 py-0.5 rounded border border-rose-800">Cancelado</span>';
     } else if (isPaid) {
       badgeColor = "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30";
-      statusLabel = '<span class="text-[10px] uppercase font-bold text-emerald-400 bg-emerald-950 px-2 py-0.5 rounded border border-emerald-800">Pagado</span>';
+      statusLabel = '<span class="text-[10px] uppercase font-bold text-emerald-400 bg-emerald-950 px-2 py-0.5 rounded border border-emerald-800">Pagado 100%</span>';
+    } else if (isInProduction) {
+      badgeColor = "bg-indigo-500/20 text-indigo-300 border border-indigo-500/40";
+      statusLabel = '<span class="text-[10px] uppercase font-bold text-indigo-300 bg-indigo-950 px-2 py-0.5 rounded border border-indigo-700">⚙️ En Producción</span>';
     } else if (isExpired) {
       badgeColor = "bg-amber-500/20 text-amber-400 border border-amber-500/30";
       statusLabel = '<span class="text-[10px] uppercase font-bold text-amber-400 bg-amber-950 px-2 py-0.5 rounded border border-amber-800">Vencido</span>';
     }
 
+    const deliveryAlert = getDeliveryAlertBadge(q.deliveryDate, q.status);
+
+    // Desglose financiero en la tarjeta según si ya tiene abonos reales o solo el estimado
+    const financialLine = (amountPaid > 0 && !isPaid)
+      ? `Abonado: <span class="text-emerald-400 font-bold">$${amountPaid.toFixed(2)}</span> • Saldo Pendiente: <span class="text-amber-400 font-extrabold">$${balanceDue.toFixed(2)}</span>`
+      : `Abono 50% sugerido: <span class="text-emerald-400 font-semibold">$${Number(q.deposit50 || 0).toFixed(2)}</span>`;
+
     return `
-      <div class="bg-slate-900/90 border ${isCancelled ? 'border-rose-900/40 opacity-70' : 'border-slate-800 hover:border-cyan-500/40'} rounded-2xl p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 transition">
+      <div class="bg-slate-900/90 border ${isCancelled ? 'border-rose-900/40 opacity-70' : isInProduction ? 'border-indigo-500/40' : 'border-slate-800 hover:border-cyan-500/40'} rounded-2xl p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 transition">
         <div class="space-y-1">
           <div class="flex flex-wrap items-center gap-2">
             <span class="text-[10px] font-extrabold px-2 py-0.5 rounded ${badgeColor}">
-              ${badgeText}
+              ${q.folio || 'S/N'}
             </span>
             <span class="text-xs text-slate-400">${q.dateString || ''}</span>
             ${statusLabel}
+            ${deliveryAlert}
           </div>
           <p class="text-sm font-bold text-white ${isCancelled ? 'line-through text-slate-400' : ''}">
             ${q.clientName} <span class="text-xs font-normal text-slate-400">• ${q.projectDesc}</span>
           </p>
           <p class="text-[11px] text-slate-400">
-            ${(q.items || []).length} ítem(s) • Abono 50%: <span class="text-emerald-400 font-semibold">$${Number(q.deposit50 || 0).toFixed(2)}</span>
+            ${(q.items || []).length} ítem(s) • ${financialLine}
           </p>
         </div>
         
         <div class="flex flex-wrap items-center gap-2 self-end md:self-center">
           <div class="text-right mr-2">
             <span class="block text-[10px] text-slate-400 uppercase">Total</span>
-            <span class="text-base font-extrabold text-white ${isCancelled ? 'line-through text-slate-400' : ''}">$${Number(q.grandTotal || 0).toFixed(2)}</span>
+            <span class="text-base font-extrabold text-white ${isCancelled ? 'line-through text-slate-400' : ''}">$${grandTotal.toFixed(2)}</span>
           </div>
 
           <button onclick="printDirectQuoteFromCloud('${q.id}')" title="Descargar / Imprimir comprobante PDF"
@@ -477,11 +544,16 @@ function renderFilteredQuotes() {
           </button>
 
           ${!isCancelled && !isPaid ? `
+            <button onclick="openPaymentModal('${q.id}')" title="Registrar Abono / Producción"
+              class="px-2.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition flex items-center gap-1">
+              <i data-lucide="wallet" class="w-3.5 h-3.5"></i>
+              <span>Abonar</span>
+            </button>
             <button onclick="restoreQuoteFromCloud('${q.id}')" title="Cargar al cotizador"
               class="px-3 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs transition">
               Cargar
             </button>
-            <button onclick="markQuoteAsPaid('${q.id}', '${q.folio}')" title="Marcar como cobrado / pagado"
+            <button onclick="markQuoteAsPaid('${q.id}', '${q.folio}')" title="Liquidar 100% y marcar Pagado"
               class="px-2.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition">
               Pagado
             </button>
@@ -505,15 +577,122 @@ function renderFilteredQuotes() {
   if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
-function updateTabBadges(activos, vencidos, pagados, cancelados) {
+function updateTabBadges(activos, produccion, vencidos, pagados, cancelados) {
   if (document.getElementById('badge_activos')) document.getElementById('badge_activos').textContent = activos.length;
+  if (document.getElementById('badge_produccion')) document.getElementById('badge_produccion').textContent = produccion.length;
   if (document.getElementById('badge_vencidos')) document.getElementById('badge_vencidos').textContent = vencidos.length;
   if (document.getElementById('badge_pagados')) document.getElementById('badge_pagados').textContent = pagados.length;
   if (document.getElementById('badge_cancelados')) document.getElementById('badge_cancelados').textContent = cancelados.length;
 }
 
 // ============================================================================
-// ACCIONES: CARGAR, PAGAR, CANCELAR E IMPRIMIR DIRECTO
+// MODAL Y LÓGICA DE ABONOS PARCIALES / PRODUCCIÓN
+// ============================================================================
+let activePaymentQuote = null;
+
+function openPaymentModal(docId) {
+  const q = (window.loadedCloudQuotes || []).find(item => item.id === docId);
+  if (!q) return;
+  activePaymentQuote = q;
+
+  const grandTotal = Number(q.grandTotal || 0);
+  const paidSoFar = Number(q.amountPaid || 0);
+  const remaining = Math.max(0, grandTotal - paidSoFar);
+
+  document.getElementById('payModalDocId').value = docId;
+  document.getElementById('payModalSubtitle').textContent = `${q.folio} • ${q.clientName}`;
+  document.getElementById('payModalTotal').textContent = `$${grandTotal.toFixed(2)}`;
+  document.getElementById('payModalPaidSoFar').textContent = `$${paidSoFar.toFixed(2)}`;
+  document.getElementById('payModalRemaining').textContent = `$${remaining.toFixed(2)}`;
+
+  // Sugerir el 50% si no ha abonado nada, o el saldo restante si ya abonó antes
+  const suggestedAmount = paidSoFar === 0 ? (grandTotal * 0.5) : remaining;
+  document.getElementById('payModalAmount').value = suggestedAmount.toFixed(2);
+  document.getElementById('payModalDeliveryDate').value = q.deliveryDate || '';
+  document.getElementById('payModalRef').value = '';
+
+  document.getElementById('paymentModal').classList.remove('hidden');
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+function closePaymentModal() {
+  document.getElementById('paymentModal').classList.add('hidden');
+  activePaymentQuote = null;
+}
+
+function fillHalfOrRemainingPayment() {
+  if (!activePaymentQuote) return;
+  const grandTotal = Number(activePaymentQuote.grandTotal || 0);
+  const paidSoFar = Number(activePaymentQuote.amountPaid || 0);
+  const remaining = Math.max(0, grandTotal - paidSoFar);
+  const val = paidSoFar === 0 ? (grandTotal * 0.5) : remaining;
+  document.getElementById('payModalAmount').value = val.toFixed(2);
+}
+
+async function submitQuotePayment(event) {
+  event.preventDefault();
+  if (!db || !activePaymentQuote) return;
+
+  const docId = document.getElementById('payModalDocId').value;
+  const amount = parseFloat(document.getElementById('payModalAmount').value);
+  const method = document.getElementById('payModalMethod').value;
+  const newDeliveryDate = document.getElementById('payModalDeliveryDate').value;
+  const ref = document.getElementById('payModalRef').value.trim();
+
+  if (isNaN(amount) || amount <= 0) {
+    alert("Ingresa un monto de abono válido.");
+    return;
+  }
+
+  const grandTotal = Number(activePaymentQuote.grandTotal || 0);
+  const prevPaid = Number(activePaymentQuote.amountPaid || 0);
+  const newTotalPaid = Number((prevPaid + amount).toFixed(2));
+  const newBalanceDue = Math.max(0, Number((grandTotal - newTotalPaid).toFixed(2)));
+
+  // Si ya cubrió el 100% (con tolerancia de 1 centavo), pasa a Pagado; si no, pasa a En Producción
+  const newStatus = newBalanceDue <= 0.01 ? 'Pagado' : 'En Producción';
+
+  const paymentRecord = {
+    amount: Number(amount.toFixed(2)),
+    method,
+    reference: ref,
+    date: new Date().toLocaleDateString('es-PA', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+  };
+
+  const existingPayments = Array.isArray(activePaymentQuote.payments) ? activePaymentQuote.payments : [];
+  existingPayments.push(paymentRecord);
+
+  const btn = document.getElementById('btnSubmitPayment');
+  btn.disabled = true;
+  btn.textContent = "Registrando...";
+
+  try {
+    await db.collection("cotizaciones_jnx").doc(docId).update({
+      status: newStatus,
+      amountPaid: newTotalPaid,
+      balanceDue: newBalanceDue,
+      deliveryDate: newDeliveryDate,
+      payments: existingPayments,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    closePaymentModal();
+    alert(newStatus === 'Pagado'
+      ? `✅ Pago registrado. La orden ${activePaymentQuote.folio} ha sido liquidada al 100% y movida a PAGADOS.`
+      : `⚙️ Abono de $${amount.toFixed(2)} (${method}) registrado.\n\nLa orden ${activePaymentQuote.folio} pasó a EN PRODUCCIÓN.\nSaldo pendiente: $${newBalanceDue.toFixed(2)}`
+    );
+
+    await loadQuotesFromFirebase();
+  } catch (err) {
+    alert("❌ Error al registrar el abono: " + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Guardar Abono";
+  }
+}
+
+// ============================================================================
+// ACCIONES: CARGAR, PAGAR 100%, CANCELAR E IMPRIMIR DIRECTO
 // ============================================================================
 function restoreQuoteFromCloud(docId) {
   const q = (window.loadedCloudQuotes || []).find(item => item.id === docId);
@@ -527,6 +706,7 @@ function restoreQuoteFromCloud(docId) {
   }
   if (document.getElementById('clientContact')) document.getElementById('clientContact').value = q.clientContact || '';
   document.getElementById('projectDesc').value = q.projectDesc || '';
+  if (document.getElementById('deliveryDate')) document.getElementById('deliveryDate').value = q.deliveryDate || '';
 
   if (q.transportCost !== undefined) {
     document.getElementById('transportSelect').value = String(q.transportCost);
@@ -541,11 +721,16 @@ function restoreQuoteFromCloud(docId) {
 }
 
 async function markQuoteAsPaid(docId, folio) {
-  if (!confirm(`¿Deseas marcar la cotización ${folio} como PAGADA?`)) return;
+  const q = (window.loadedCloudQuotes || []).find(item => item.id === docId);
+  const grandTotal = q ? Number(q.grandTotal || 0) : 0;
+
+  if (!confirm(`¿Confirmas que la cotización ${folio} ha sido liquidada al 100% ($${grandTotal.toFixed(2)})?`)) return;
 
   try {
     await db.collection("cotizaciones_jnx").doc(docId).update({
       status: 'Pagado',
+      amountPaid: grandTotal,
+      balanceDue: 0,
       paidAt: firebase.firestore.FieldValue.serverTimestamp()
     });
     await loadQuotesFromFirebase();
@@ -581,13 +766,17 @@ function printDirectQuoteFromCloud(docId) {
   const globalTransport = Number(q.transportCost || 0);
   const urgencyAmount = Number(q.urgencyAmount || 0);
   const grandTotal = Number(q.grandTotal || 0);
-  const deposit = Number(q.deposit50 || (grandTotal * 0.5));
+  const amountPaid = Number(q.amountPaid || 0);
+  const deposit50 = Number(q.deposit50 || (grandTotal * 0.5));
 
   if (document.getElementById('pdfQuoteNumber')) document.getElementById('pdfQuoteNumber').textContent = `N° ${q.folio || 'JNX-00000'}`;
   if (document.getElementById('pdfDate')) document.getElementById('pdfDate').textContent = `Fecha: ${q.dateString || 'Cotización Oficial'}`;
   if (document.getElementById('pdfClientName')) document.getElementById('pdfClientName').textContent = q.clientName || 'Cliente General';
   if (document.getElementById('pdfClientContact')) document.getElementById('pdfClientContact').textContent = q.clientContact ? `Contacto / RUC: ${q.clientContact}` : '';
   if (document.getElementById('pdfProjectDesc')) document.getElementById('pdfProjectDesc').textContent = q.projectDesc || 'Pedido de Personalización';
+  if (document.getElementById('pdfDeliveryDate')) {
+    document.getElementById('pdfDeliveryDate').textContent = q.deliveryDate ? `Entrega estimada: ${q.deliveryDate}` : '';
+  }
 
   let itemsSubtotal = 0;
   const tbody = document.getElementById('pdfTableBody');
@@ -629,17 +818,37 @@ function printDirectQuoteFromCloud(docId) {
   }
 
   if (document.getElementById('pdfGrandTotal')) document.getElementById('pdfGrandTotal').textContent = `$${grandTotal.toFixed(2)}`;
-  if (document.getElementById('pdfDeposit')) document.getElementById('pdfDeposit').textContent = `$${deposit.toFixed(2)}`;
+
+  // Mostrar abono real y saldo pendiente si ya hay pagos registrados
+  const depLabel = document.getElementById('pdfDepositLabel');
+  const depVal = document.getElementById('pdfDeposit');
+  const balRow = document.getElementById('pdfBalanceRow');
+  const balVal = document.getElementById('pdfBalance');
+
+  if (q.status === 'Pagado') {
+    if (depLabel) depLabel.textContent = 'Total Pagado (100%):';
+    if (depVal) depVal.textContent = `$${grandTotal.toFixed(2)}`;
+    if (balRow) balRow.classList.add('hidden');
+  } else if (amountPaid > 0) {
+    const remaining = Math.max(0, grandTotal - amountPaid);
+    if (depLabel) depLabel.textContent = 'Abono Recibido:';
+    if (depVal) depVal.textContent = `$${amountPaid.toFixed(2)}`;
+    if (balRow && balVal) {
+      balRow.classList.remove('hidden');
+      balVal.textContent = `$${remaining.toFixed(2)}`;
+    }
+  } else {
+    if (depLabel) depLabel.textContent = 'Abono 50% para iniciar:';
+    if (depVal) depVal.textContent = `$${deposit50.toFixed(2)}`;
+    if (balRow) balRow.classList.add('hidden');
+  }
 
   window.print();
 }
 
-
 // ============================================================================
 // DIRECTORIO DE CLIENTES E HISTORIAL INDIVIDUAL POR CLIENTE
 // ============================================================================
-let selectedDirectoryClientId = null;
-
 async function toggleClientsDirectoryModal() {
   const modal = document.getElementById('clientsDirectoryModal');
   if (modal.classList.contains('hidden')) {
@@ -647,7 +856,6 @@ async function toggleClientsDirectoryModal() {
     document.getElementById('directorySearchInput').value = '';
     selectedDirectoryClientId = null;
 
-    // Asegurar que tenemos clientes y cotizaciones actualizados desde Firebase
     await Promise.all([
       loadClientsFromFirebase(),
       ensureQuotesLoadedForDirectory()
@@ -696,7 +904,6 @@ function filterClientsDirectory(query) {
 
   container.innerHTML = filtered.map(c => {
     const isSelected = c.id === selectedDirectoryClientId;
-    // Contar cuántas cotizaciones tiene este cliente (por ID vinculado o coincidencia exacta de nombre)
     const clientQuotesCount = (window.loadedCloudQuotes || []).filter(q =>
       (q.clientId && q.clientId === c.id) ||
       (!q.clientId && q.clientName && q.clientName.trim().toLowerCase() === c.name.trim().toLowerCase())
@@ -725,18 +932,19 @@ function viewClientHistoryDetail(clientId) {
   const detailContainer = document.getElementById('directoryClientDetail');
   if (!client || !detailContainer) return;
 
-  // Filtrar todas las cotizaciones del cliente (por clientId o por coincidencia exacta de nombre)
   const clientQuotes = (window.loadedCloudQuotes || []).filter(q =>
     (q.clientId && q.clientId === client.id) ||
     (!q.clientId && q.clientName && q.clientName.trim().toLowerCase() === client.name.trim().toLowerCase())
   );
 
-  // Calcular total facturado (Pagados) y total cotizado (Activos + Pagados)
   let totalPaid = 0;
   let totalActive = 0;
   clientQuotes.forEach(q => {
     if (q.status === 'Pagado') totalPaid += Number(q.grandTotal || 0);
-    else if (q.status !== 'Cancelado') totalActive += Number(q.grandTotal || 0);
+    else if (q.status !== 'Cancelado') {
+      totalPaid += Number(q.amountPaid || 0);
+      totalActive += Number(q.balanceDue !== undefined ? q.balanceDue : q.grandTotal || 0);
+    }
   });
 
   const quotesHTML = clientQuotes.length === 0
@@ -744,9 +952,11 @@ function viewClientHistoryDetail(clientId) {
     : clientQuotes.map(q => {
       const isCancelled = q.status === 'Cancelado';
       const isPaid = q.status === 'Pagado';
+      const isProd = q.status === 'En Producción';
       let statusTag = `<span class="text-[10px] font-bold px-2 py-0.5 rounded bg-cyan-500/15 text-cyan-400">Activo</span>`;
       if (isCancelled) statusTag = `<span class="text-[10px] font-bold px-2 py-0.5 rounded bg-rose-500/20 text-rose-400">Cancelado</span>`;
       if (isPaid) statusTag = `<span class="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400">Pagado</span>`;
+      if (isProd) statusTag = `<span class="text-[10px] font-bold px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300">En Producción</span>`;
 
       return `
           <div class="bg-slate-950/80 border border-slate-800 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -777,7 +987,6 @@ function viewClientHistoryDetail(clientId) {
 
   detailContainer.innerHTML = `
     <div class="space-y-4">
-      <!-- Ficha del Cliente -->
       <div class="flex flex-wrap items-start justify-between gap-3 border-b border-slate-800 pb-3">
         <div>
           <span class="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">${client.clientType || 'Cliente'}</span>
@@ -796,23 +1005,21 @@ function viewClientHistoryDetail(clientId) {
         </button>
       </div>
 
-      <!-- Resumen Financiero del Cliente -->
       <div class="grid grid-cols-3 gap-2 text-center">
         <div class="bg-slate-950/70 p-2.5 rounded-xl border border-slate-800">
           <span class="block text-[10px] text-slate-400 uppercase">Cotizaciones</span>
           <span class="text-sm font-extrabold text-white">${clientQuotes.length}</span>
         </div>
         <div class="bg-slate-950/70 p-2.5 rounded-xl border border-slate-800">
-          <span class="block text-[10px] text-slate-400 uppercase">Total Pagado</span>
+          <span class="block text-[10px] text-slate-400 uppercase">Total Cobrado</span>
           <span class="text-sm font-extrabold text-emerald-400">$${totalPaid.toFixed(2)}</span>
         </div>
         <div class="bg-slate-950/70 p-2.5 rounded-xl border border-slate-800">
-          <span class="block text-[10px] text-slate-400 uppercase">En Proceso</span>
+          <span class="block text-[10px] text-slate-400 uppercase">Saldo por Cobrar</span>
           <span class="text-sm font-extrabold text-cyan-400">$${totalActive.toFixed(2)}</span>
         </div>
       </div>
 
-      <!-- Lista de Cotizaciones del Cliente -->
       <div class="space-y-2">
         <h5 class="text-xs font-bold text-slate-300 uppercase tracking-wider">Historial de Cotizaciones</h5>
         ${quotesHTML}
