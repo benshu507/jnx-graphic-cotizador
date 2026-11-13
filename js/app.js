@@ -760,6 +760,9 @@ function resetDefaultCosts() {
   calculateAll();
 }
 
+// ============================================================================
+// MENÚ DESPLEGABLE DEL ENCABEZADO
+// ============================================================================
 function toggleHeaderDropdown() {
   const menu = document.getElementById('headerDropdownMenu');
   if (menu) {
@@ -767,7 +770,7 @@ function toggleHeaderDropdown() {
   }
 }
 
-// Cerrar el menú automáticamente si se hace clic fuera de él
+// Cerrar el menú automáticamente al hacer clic fuera de él
 document.addEventListener('click', (e) => {
   const wrapper = document.getElementById('headerMenuWrapper');
   const menu = document.getElementById('headerDropdownMenu');
