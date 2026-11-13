@@ -14,6 +14,7 @@ const firebaseConfig = {
 let db = null;
 let currentHistoryTab = 'activos'; // 'activos' | 'vencidos' | 'pagados' | 'cancelados'
 window.loadedCloudQuotes = [];
+window.loadedClients = [];
 
 try {
   if (typeof firebase !== 'undefined' && firebaseConfig.apiKey !== "PEGA_AQUI_TU_API_KEY") {
@@ -25,6 +26,187 @@ try {
   }
 } catch (err) {
   console.error("Error inicializando Firebase:", err);
+}
+
+// Cargar clientes en memoria al iniciar para autocompletado instantáneo
+window.addEventListener('DOMContentLoaded', () => {
+  loadClientsFromFirebase();
+
+  // Cerrar lista desplegable si el usuario hace clic fuera
+  document.addEventListener('click', (e) => {
+    const input = document.getElementById('clientName');
+    const list = document.getElementById('clientAutocompleteList');
+    if (input && list && !input.contains(e.target) && !list.contains(e.target)) {
+      list.classList.add('hidden');
+    }
+  });
+});
+
+// ============================================================================
+// GESTIÓN DE CLIENTES (GUARDAR, BUSCAR Y AUTOCOMPLETAR)
+// ============================================================================
+function toggleClientModal() {
+  const modal = document.getElementById('clientModal');
+  if (modal.classList.contains('hidden')) {
+    document.getElementById('newClientForm').reset();
+    // Si ya escribió un nombre en el input principal, pre-llenarlo en el modal
+    const currentTypedName = document.getElementById('clientName').value.trim();
+    if (currentTypedName) {
+      document.getElementById('newClientName').value = currentTypedName;
+    }
+    modal.classList.remove('hidden');
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  } else {
+    modal.classList.add('hidden');
+  }
+}
+
+async function loadClientsFromFirebase() {
+  if (!db) return;
+  try {
+    const snapshot = await db.collection("clientes_jnx").orderBy("name", "asc").get();
+    const clients = [];
+    snapshot.forEach(doc => clients.push({ id: doc.id, ...doc.data() }));
+    window.loadedClients = clients;
+  } catch (error) {
+    console.error("Error cargando clientes:", error);
+  }
+}
+
+async function saveNewClientToFirebase(event) {
+  event.preventDefault();
+  if (!db) {
+    alert("⚠️ Error de conexión con Firebase.");
+    return;
+  }
+
+  const name = document.getElementById('newClientName').value.trim();
+  const phone = document.getElementById('newClientPhone').value.trim();
+  const ruc = document.getElementById('newClientRuc').value.trim();
+  const email = document.getElementById('newClientEmail').value.trim();
+  const clientType = document.getElementById('newClientType').value;
+  const address = document.getElementById('newClientAddress').value.trim();
+  const notes = document.getElementById('newClientNotes').value.trim();
+
+  if (!name || !phone) {
+    alert("El nombre y el teléfono son obligatorios.");
+    return;
+  }
+
+  const btnSubmit = document.getElementById('btnSaveClientSubmit');
+  if (btnSubmit) {
+    btnSubmit.disabled = true;
+    btnSubmit.innerHTML = `<span>Guardando...</span>`;
+  }
+
+  try {
+    const now = new Date();
+    const clientData = {
+      name,
+      phone,
+      ruc,
+      email,
+      clientType,
+      address,
+      notes,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      dateString: now.toLocaleDateString('es-PA', { year: 'numeric', month: 'short', day: 'numeric' })
+    };
+
+    const docRef = await db.collection("clientes_jnx").add(clientData);
+    const savedClient = { id: docRef.id, ...clientData };
+
+    // Actualizar memoria local
+    window.loadedClients.push(savedClient);
+    window.loadedClients.sort((a, b) => a.name.localeCompare(b.name));
+
+    // Seleccionar automáticamente este cliente recién creado en la cotización actual
+    selectClientFromAutocomplete(savedClient);
+
+    toggleClientModal();
+    alert(`✅ Cliente "${name}" guardado exitosamente en la base de datos.`);
+  } catch (error) {
+    console.error("Error guardando cliente:", error);
+    alert("❌ Error al guardar el cliente: " + error.message);
+  } finally {
+    if (btnSubmit) {
+      btnSubmit.disabled = false;
+      btnSubmit.innerHTML = `<i data-lucide="save" class="w-4 h-4"></i><span>Guardar Cliente</span>`;
+      if (typeof lucide !== 'undefined') lucide.createIcons();
+    }
+  }
+}
+
+function handleClientSearchInput(query) {
+  // Si el usuario edita el texto manualmente, limpiar el ID vinculado hasta que seleccione uno
+  document.getElementById('selectedClientId').value = "";
+  const badge = document.getElementById('clientLinkedBadge');
+  if (badge) badge.classList.add('hidden');
+
+  const list = document.getElementById('clientAutocompleteList');
+  const term = query.trim().toLowerCase();
+
+  if (!term || window.loadedClients.length === 0) {
+    list.classList.add('hidden');
+    return;
+  }
+
+  const matches = window.loadedClients.filter(c =>
+    (c.name && c.name.toLowerCase().includes(term)) ||
+    (c.phone && c.phone.toLowerCase().includes(term)) ||
+    (c.ruc && c.ruc.toLowerCase().includes(term))
+  ).slice(0, 8);
+
+  if (matches.length === 0) {
+    list.innerHTML = `
+      <div class="p-3 text-xs text-slate-400 flex items-center justify-between">
+        <span>No se encontró "${query}"</span>
+        <button type="button" onclick="toggleClientModal()" class="text-cyan-400 font-bold hover:underline">+ Registrar</button>
+      </div>
+    `;
+    list.classList.remove('hidden');
+    return;
+  }
+
+  list.innerHTML = matches.map(c => {
+    const contactDisplay = [c.phone, c.ruc ? `RUC: ${c.ruc}` : ''].filter(Boolean).join(' • ');
+    return `
+      <button type="button" onclick="selectClientById('${c.id}')"
+        class="w-full text-left px-3.5 py-2.5 hover:bg-slate-900 transition flex flex-col gap-0.5">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-bold text-white">${c.name}</span>
+          <span class="text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-cyan-400 border border-slate-700">${c.clientType || 'Cliente'}</span>
+        </div>
+        <span class="text-[11px] text-slate-400">${contactDisplay || 'Sin contacto registrado'}</span>
+      </button>
+    `;
+  }).join('');
+
+  list.classList.remove('hidden');
+}
+
+function selectClientById(clientId) {
+  const client = window.loadedClients.find(c => c.id === clientId);
+  if (client) {
+    selectClientFromAutocomplete(client);
+  }
+}
+
+function selectClientFromAutocomplete(client) {
+  document.getElementById('clientName').value = client.name || '';
+  document.getElementById('selectedClientId').value = client.id || '';
+
+  // Formatear Teléfono / RUC para el campo de contacto
+  const contactParts = [];
+  if (client.phone) contactParts.push(client.phone);
+  if (client.ruc) contactParts.push(`RUC: ${client.ruc}`);
+  document.getElementById('clientContact').value = contactParts.join(' / ');
+
+  const badge = document.getElementById('clientLinkedBadge');
+  if (badge) badge.classList.remove('hidden');
+
+  const list = document.getElementById('clientAutocompleteList');
+  if (list) list.classList.add('hidden');
 }
 
 // ============================================================================
@@ -63,6 +245,7 @@ async function saveQuoteToFirebase() {
   }
 
   const client = document.getElementById('clientName').value.trim() || 'Cliente General';
+  const clientId = document.getElementById('selectedClientId')?.value.trim() || null;
   const contact = document.getElementById('clientContact')?.value.trim() || '';
   const project = document.getElementById('projectDesc').value.trim() || 'Sin referencia';
   const itemsToSave = cart.length > 0 ? cart : (currentCalculation ? [currentCalculation] : []);
@@ -98,6 +281,7 @@ async function saveQuoteToFirebase() {
     await db.collection("cotizaciones_jnx").add({
       folio: quoteFolio,
       status: 'Activo', // 'Activo' | 'Pagado' | 'Cancelado'
+      clientId: clientId, // Vínculo directo con la colección clientes_jnx
       clientName: client,
       clientContact: contact,
       projectDesc: project,
@@ -128,6 +312,8 @@ async function saveQuoteToFirebase() {
 
 function clearFullQuoterScreen() {
   document.getElementById('clientName').value = "";
+  if (document.getElementById('selectedClientId')) document.getElementById('selectedClientId').value = "";
+  if (document.getElementById('clientLinkedBadge')) document.getElementById('clientLinkedBadge').classList.add('hidden');
   if (document.getElementById('clientContact')) document.getElementById('clientContact').value = "";
   document.getElementById('projectDesc').value = "";
 
@@ -156,7 +342,6 @@ async function toggleHistoryModal() {
 function switchHistoryTab(tabName) {
   currentHistoryTab = tabName;
 
-  // Actualizar estilos visuales de las pestañas
   const tabs = ['activos', 'vencidos', 'pagados', 'cancelados'];
   tabs.forEach(t => {
     const btn = document.getElementById(`tab_${t}`);
@@ -205,7 +390,6 @@ function renderFilteredQuotes() {
   const threeDaysMs = 3 * 24 * 60 * 60 * 1000;
   const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
 
-  // Clasificación por criterios
   const cancelados = [];
   const pagados = [];
   const vencidos = [];
@@ -221,10 +405,8 @@ function renderFilteredQuotes() {
     } else if (status === 'Pagado') {
       pagados.push(q);
     } else if (diffMs > threeDaysMs) {
-      // Vencidos: más de 3 días sin pagar ni cancelar
       vencidos.push(q);
     } else if (diffMs <= thirtyDaysMs) {
-      // Activos: creados hace menos o igual a 30 días (y dentro de los 3 días vigentes)
       activos.push(q);
     } else {
       vencidos.push(q);
@@ -288,7 +470,6 @@ function renderFilteredQuotes() {
             <span class="text-base font-extrabold text-white ${isCancelled ? 'line-through text-slate-400' : ''}">$${Number(q.grandTotal || 0).toFixed(2)}</span>
           </div>
 
-          <!-- BOTÓN IMPRIMIR PDF DISPONIBLE EN TODOS -->
           <button onclick="printDirectQuoteFromCloud('${q.id}')" title="Descargar / Imprimir comprobante PDF"
             class="px-2.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-400 border border-slate-700 text-xs font-bold transition flex items-center gap-1">
             <i data-lucide="printer" class="w-3.5 h-3.5"></i>
@@ -339,6 +520,11 @@ function restoreQuoteFromCloud(docId) {
   if (!q || q.status === 'Cancelado') return;
 
   document.getElementById('clientName').value = q.clientName || '';
+  if (document.getElementById('selectedClientId')) document.getElementById('selectedClientId').value = q.clientId || '';
+  if (document.getElementById('clientLinkedBadge')) {
+    if (q.clientId) document.getElementById('clientLinkedBadge').classList.remove('hidden');
+    else document.getElementById('clientLinkedBadge').classList.add('hidden');
+  }
   if (document.getElementById('clientContact')) document.getElementById('clientContact').value = q.clientContact || '';
   document.getElementById('projectDesc').value = q.projectDesc || '';
 
@@ -382,7 +568,6 @@ async function cancelQuoteInCloud(docId, folio) {
   }
 }
 
-// IMPRIMIR PDF DIRECTAMENTE DESDE LA NUBE SIN REEMPLAZAR LA PANTALLA ACTUAL
 function printDirectQuoteFromCloud(docId) {
   const q = (window.loadedCloudQuotes || []).find(item => item.id === docId);
   if (!q) return;

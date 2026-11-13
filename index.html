@@ -76,17 +76,37 @@
 
     <main class="max-w-7xl mx-auto px-4 sm:px-6 pt-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
       <section class="lg:col-span-7 space-y-6">
-        <!-- 1. Datos del Cliente -->
-        <div class="glass-card rounded-2xl p-5">
-          <div class="flex items-center gap-2 mb-4">
-            <i data-lucide="user-check" class="w-5 h-5 text-cyan-400"></i>
-            <h2 class="font-bold text-base text-white">1. Datos de la Cotización</h2>
+        <!-- 1. Datos del Cliente con Autocompletado y Registro -->
+        <div class="glass-card rounded-2xl p-5 relative z-20">
+          <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-2">
+              <i data-lucide="user-check" class="w-5 h-5 text-cyan-400"></i>
+              <h2 class="font-bold text-base text-white">1. Datos de la Cotización</h2>
+            </div>
+            <span id="clientLinkedBadge"
+              class="hidden text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
+              Cliente Registrado ✓
+            </span>
           </div>
-          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 items-start">
+            <div class="relative">
               <label class="block text-xs text-slate-400 mb-1">Nombre del Cliente / Empresa</label>
-              <input id="clientName" type="text" placeholder="Ej. Escuela Unión / Cliente"
+              <input id="clientName" type="text" autocomplete="off" oninput="handleClientSearchInput(this.value)"
+                placeholder="Buscar o escribir cliente..."
                 class="w-full bg-slate-900/90 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-cyan-500">
+              <input type="hidden" id="selectedClientId" value="">
+
+              <!-- Lista desplegable de autocompletado -->
+              <div id="clientAutocompleteList"
+                class="hidden absolute left-0 right-0 mt-1.5 bg-slate-950 border border-slate-700 rounded-xl shadow-2xl max-h-52 overflow-y-auto z-50 divide-y divide-slate-800/80">
+              </div>
+
+              <!-- Botón Agregar Cliente debajo del input -->
+              <button type="button" onclick="toggleClientModal()"
+                class="mt-1.5 inline-flex items-center gap-1 text-[11px] font-bold text-cyan-400 hover:text-cyan-300 transition">
+                <i data-lucide="user-plus" class="w-3.5 h-3.5"></i>
+                <span>Agregar Cliente</span>
+              </button>
             </div>
             <div>
               <label class="block text-xs text-slate-400 mb-1">Teléfono / RUC (Opcional)</label>
@@ -102,7 +122,7 @@
         </div>
 
         <!-- 2. Configurar Producto -->
-        <div class="glass-card rounded-2xl p-5 space-y-5">
+        <div class="glass-card rounded-2xl p-5 space-y-5 relative z-10">
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-2">
               <i data-lucide="layers" class="w-5 h-5 text-cyan-400"></i>
@@ -504,6 +524,90 @@
     </div>
   </div>
 
+  <!-- MODAL AGREGAR NUEVO CLIENTE A LA BASE DE DATOS -->
+  <div id="clientModal"
+    class="no-print hidden fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4">
+    <div class="bg-slate-950 border border-slate-800 rounded-3xl max-w-lg w-full p-6 space-y-5 shadow-2xl">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-4">
+        <div>
+          <h3 class="font-extrabold text-lg text-white flex items-center gap-2">
+            <i data-lucide="user-plus" class="w-5 h-5 text-cyan-400"></i>
+            Registrar Nuevo Cliente
+          </h3>
+          <p class="text-xs text-slate-400 mt-0.5">Guarda los datos del cliente en Firebase para futuras cotizaciones.
+          </p>
+        </div>
+        <button onclick="toggleClientModal()"
+          class="p-2 rounded-xl bg-slate-900 text-slate-400 hover:text-white border border-slate-800 transition">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <form id="newClientForm" onsubmit="saveNewClientToFirebase(event)" class="space-y-4">
+        <div>
+          <label class="block text-xs font-medium text-slate-300 mb-1">Nombre Completo o Empresa *</label>
+          <input id="newClientName" type="text" required placeholder="Ej. Inversiones del Istmo S.A."
+            class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-cyan-500">
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-medium text-slate-300 mb-1">Teléfono / WhatsApp *</label>
+            <input id="newClientPhone" type="text" required placeholder="Ej. 6000-0000"
+              class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-cyan-500">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-300 mb-1">RUC / Cédula / DV</label>
+            <input id="newClientRuc" type="text" placeholder="Ej. 15569821-2-2023 DV 45"
+              class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-cyan-500">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-medium text-slate-300 mb-1">Correo Electrónico</label>
+            <input id="newClientEmail" type="email" placeholder="cliente@correo.com"
+              class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-cyan-500">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-300 mb-1">Tipo de Cliente</label>
+            <select id="newClientType"
+              class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-cyan-500">
+              <option value="Particular">Cliente Particular</option>
+              <option value="Empresa">Empresa / Corporativo</option>
+              <option value="Escuela / Colegio">Escuela / Colegio</option>
+              <option value="Revendedor">Revendedor / Aliado</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-medium text-slate-300 mb-1">Dirección / Ubicación (Panamá)</label>
+          <input id="newClientAddress" type="text" placeholder="Ej. Vía España, Edificio Torre X, Piso 3"
+            class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-cyan-500">
+        </div>
+
+        <div>
+          <label class="block text-xs font-medium text-slate-300 mb-1">Notas / Preferencias (Opcional)</label>
+          <textarea id="newClientNotes" rows="2" placeholder="Ej. Siempre pide factura fiscal con ITBMS..."
+            class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-cyan-500"></textarea>
+        </div>
+
+        <div class="flex justify-end gap-3 pt-4 border-t border-slate-800">
+          <button type="button" onclick="toggleClientModal()"
+            class="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs transition">
+            Cancelar
+          </button>
+          <button type="submit" id="btnSaveClientSubmit"
+            class="px-6 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-extrabold text-xs shadow-lg shadow-cyan-500/20 transition flex items-center gap-1.5">
+            <i data-lucide="save" class="w-4 h-4"></i>
+            <span>Guardar Cliente</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- MODAL DE COSTOS REDISEÑADO A 3 COLUMNAS (ESTILO IMAGEN) -->
   <div id="configModal"
     class="no-print hidden fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4">
@@ -568,8 +672,6 @@
     </div>
   </div>
 
-
-  <!-- MODAL DE HISTORIAL DE COTIZACIONES EN FIREBASE -->
   <!-- MODAL DE HISTORIAL DE COTIZACIONES EN FIREBASE CON PESTAÑAS -->
   <div id="historyModal"
     class="no-print hidden fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4">
@@ -623,11 +725,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
   <script src="js/data.js"></script>
   <script src="js/app.js"></script>
-  <script src="js/firebase-db.js?v=2.0"></script>
-
-  <!-- 
-  <script src="js/data.js"></script>
-  <script src="js/app.js"></script> -->
+  <script src="js/firebase-db.js?v=3.0"></script>
 
 </body>
 
