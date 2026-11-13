@@ -633,3 +633,198 @@ function printDirectQuoteFromCloud(docId) {
 
   window.print();
 }
+
+
+// ============================================================================
+// DIRECTORIO DE CLIENTES E HISTORIAL INDIVIDUAL POR CLIENTE
+// ============================================================================
+let selectedDirectoryClientId = null;
+
+async function toggleClientsDirectoryModal() {
+  const modal = document.getElementById('clientsDirectoryModal');
+  if (modal.classList.contains('hidden')) {
+    modal.classList.remove('hidden');
+    document.getElementById('directorySearchInput').value = '';
+    selectedDirectoryClientId = null;
+
+    // Asegurar que tenemos clientes y cotizaciones actualizados desde Firebase
+    await Promise.all([
+      loadClientsFromFirebase(),
+      ensureQuotesLoadedForDirectory()
+    ]);
+
+    filterClientsDirectory('');
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  } else {
+    modal.classList.add('hidden');
+  }
+}
+
+async function ensureQuotesLoadedForDirectory() {
+  if (!db) return;
+  try {
+    const snapshot = await db.collection("cotizaciones_jnx").orderBy("createdAt", "desc").limit(150).get();
+    const docs = [];
+    snapshot.forEach(doc => docs.push({ id: doc.id, ...doc.data() }));
+    window.loadedCloudQuotes = docs;
+  } catch (err) {
+    console.error("Error cargando cotizaciones para directorio:", err);
+  }
+}
+
+function filterClientsDirectory(query) {
+  const container = document.getElementById('directoryClientsList');
+  const term = query.trim().toLowerCase();
+  const clients = window.loadedClients || [];
+
+  if (clients.length === 0) {
+    container.innerHTML = `<p class="text-xs text-slate-500 text-center py-8">No hay clientes registrados aún.</p>`;
+    return;
+  }
+
+  const filtered = clients.filter(c =>
+    (c.name && c.name.toLowerCase().includes(term)) ||
+    (c.phone && c.phone.toLowerCase().includes(term)) ||
+    (c.ruc && c.ruc.toLowerCase().includes(term)) ||
+    (c.clientType && c.clientType.toLowerCase().includes(term))
+  );
+
+  if (filtered.length === 0) {
+    container.innerHTML = `<p class="text-xs text-slate-500 text-center py-8">No se encontraron coincidencias para "${query}".</p>`;
+    return;
+  }
+
+  container.innerHTML = filtered.map(c => {
+    const isSelected = c.id === selectedDirectoryClientId;
+    // Contar cuántas cotizaciones tiene este cliente (por ID vinculado o coincidencia exacta de nombre)
+    const clientQuotesCount = (window.loadedCloudQuotes || []).filter(q =>
+      (q.clientId && q.clientId === c.id) ||
+      (!q.clientId && q.clientName && q.clientName.trim().toLowerCase() === c.name.trim().toLowerCase())
+    ).length;
+
+    return `
+      <button type="button" onclick="viewClientHistoryDetail('${c.id}')"
+        class="w-full text-left p-3 rounded-xl border transition flex items-center justify-between gap-2 ${isSelected ? 'bg-cyan-500/15 border-cyan-500 text-white' : 'bg-slate-900/80 border-slate-800 hover:border-slate-700 text-slate-200'}">
+        <div class="min-w-0">
+          <p class="text-xs font-bold truncate">${c.name}</p>
+          <p class="text-[11px] text-slate-400 truncate">${c.phone || 'Sin teléfono'} ${c.ruc ? '• RUC: ' + c.ruc : ''}</p>
+        </div>
+        <span class="shrink-0 text-[10px] font-extrabold px-2 py-0.5 rounded-full ${clientQuotesCount > 0 ? 'bg-cyan-500/20 text-cyan-400' : 'bg-slate-800 text-slate-500'}">
+          ${clientQuotesCount} cot.
+        </span>
+      </button>
+    `;
+  }).join('');
+}
+
+function viewClientHistoryDetail(clientId) {
+  selectedDirectoryClientId = clientId;
+  filterClientsDirectory(document.getElementById('directorySearchInput').value);
+
+  const client = (window.loadedClients || []).find(c => c.id === clientId);
+  const detailContainer = document.getElementById('directoryClientDetail');
+  if (!client || !detailContainer) return;
+
+  // Filtrar todas las cotizaciones del cliente (por clientId o por coincidencia exacta de nombre)
+  const clientQuotes = (window.loadedCloudQuotes || []).filter(q =>
+    (q.clientId && q.clientId === client.id) ||
+    (!q.clientId && q.clientName && q.clientName.trim().toLowerCase() === client.name.trim().toLowerCase())
+  );
+
+  // Calcular total facturado (Pagados) y total cotizado (Activos + Pagados)
+  let totalPaid = 0;
+  let totalActive = 0;
+  clientQuotes.forEach(q => {
+    if (q.status === 'Pagado') totalPaid += Number(q.grandTotal || 0);
+    else if (q.status !== 'Cancelado') totalActive += Number(q.grandTotal || 0);
+  });
+
+  const quotesHTML = clientQuotes.length === 0
+    ? `<p class="text-xs text-slate-500 text-center py-6 bg-slate-950/50 rounded-xl border border-slate-800/70">Este cliente aún no tiene cotizaciones registradas.</p>`
+    : clientQuotes.map(q => {
+      const isCancelled = q.status === 'Cancelado';
+      const isPaid = q.status === 'Pagado';
+      let statusTag = `<span class="text-[10px] font-bold px-2 py-0.5 rounded bg-cyan-500/15 text-cyan-400">Activo</span>`;
+      if (isCancelled) statusTag = `<span class="text-[10px] font-bold px-2 py-0.5 rounded bg-rose-500/20 text-rose-400">Cancelado</span>`;
+      if (isPaid) statusTag = `<span class="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400">Pagado</span>`;
+
+      return `
+          <div class="bg-slate-950/80 border border-slate-800 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <div class="flex items-center gap-2">
+                <span class="text-xs font-extrabold text-white">${q.folio || 'S/N'}</span>
+                ${statusTag}
+                <span class="text-[11px] text-slate-500">${q.dateString || ''}</span>
+              </div>
+              <p class="text-xs text-slate-300 mt-0.5">${q.projectDesc || 'Sin proyecto'} • <span class="text-slate-400">${(q.items || []).length} ítem(s)</span></p>
+            </div>
+            <div class="flex items-center gap-2 self-end sm:self-center">
+              <span class="text-sm font-extrabold text-white mr-1">$${Number(q.grandTotal || 0).toFixed(2)}</span>
+              <button onclick="printDirectQuoteFromCloud('${q.id}')" title="Imprimir PDF"
+                class="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-400 border border-slate-700 transition">
+                <i data-lucide="printer" class="w-3.5 h-3.5"></i>
+              </button>
+              ${!isCancelled ? `
+                <button onclick="toggleClientsDirectoryModal(); restoreQuoteFromCloud('${q.id}');"
+                  class="px-2.5 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-[11px] transition">
+                  Cargar
+                </button>
+              ` : ''}
+            </div>
+          </div>
+        `;
+    }).join('');
+
+  detailContainer.innerHTML = `
+    <div class="space-y-4">
+      <!-- Ficha del Cliente -->
+      <div class="flex flex-wrap items-start justify-between gap-3 border-b border-slate-800 pb-3">
+        <div>
+          <span class="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">${client.clientType || 'Cliente'}</span>
+          <h4 class="text-base font-extrabold text-white mt-1">${client.name}</h4>
+          <div class="text-xs text-slate-400 space-y-0.5 mt-1">
+            <p>📞 ${client.phone || 'N/A'} ${client.ruc ? `• 🆔 RUC: ${client.ruc}` : ''}</p>
+            ${client.email ? `<p>✉️ ${client.email}</p>` : ''}
+            ${client.address ? `<p>📍 ${client.address}</p>` : ''}
+            ${client.notes ? `<p class="text-amber-300/90 italic mt-1">📝 "${client.notes}"</p>` : ''}
+          </div>
+        </div>
+        <button onclick="startNewQuoteForClient('${client.id}')"
+          class="px-3 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-xs transition flex items-center gap-1.5">
+          <i data-lucide="file-plus" class="w-3.5 h-3.5"></i>
+          <span>Nueva Cotización</span>
+        </button>
+      </div>
+
+      <!-- Resumen Financiero del Cliente -->
+      <div class="grid grid-cols-3 gap-2 text-center">
+        <div class="bg-slate-950/70 p-2.5 rounded-xl border border-slate-800">
+          <span class="block text-[10px] text-slate-400 uppercase">Cotizaciones</span>
+          <span class="text-sm font-extrabold text-white">${clientQuotes.length}</span>
+        </div>
+        <div class="bg-slate-950/70 p-2.5 rounded-xl border border-slate-800">
+          <span class="block text-[10px] text-slate-400 uppercase">Total Pagado</span>
+          <span class="text-sm font-extrabold text-emerald-400">$${totalPaid.toFixed(2)}</span>
+        </div>
+        <div class="bg-slate-950/70 p-2.5 rounded-xl border border-slate-800">
+          <span class="block text-[10px] text-slate-400 uppercase">En Proceso</span>
+          <span class="text-sm font-extrabold text-cyan-400">$${totalActive.toFixed(2)}</span>
+        </div>
+      </div>
+
+      <!-- Lista de Cotizaciones del Cliente -->
+      <div class="space-y-2">
+        <h5 class="text-xs font-bold text-slate-300 uppercase tracking-wider">Historial de Cotizaciones</h5>
+        ${quotesHTML}
+      </div>
+    </div>
+  `;
+
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+function startNewQuoteForClient(clientId) {
+  clearFullQuoterScreen();
+  selectClientById(clientId);
+  toggleClientsDirectoryModal();
+}
