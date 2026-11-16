@@ -86,7 +86,7 @@ const TECHNIQUES = [
     name: 'Sublimación Estándar (Papel Proveedor + Plancha en Casa)',
     supplierCost: 1.25,
     variants: [
-      { id: 'sub_mug', name: 'Taza / Cilíndrico Estándar', multiplier: 0.80, sheetsA4: 0.5, sheetsA3: 0, presses: 1 },
+      { id: 'sub_mug', name: 'Taza / Cilíndrico Estándar', multiplier: 0.80, sheetsA4: 0.08, sheetsA3: 0, presses: 1 },
       { id: 'sub_a4', name: 'Estampado Parcial A4 (1 Cara)', multiplier: 1.00, sheetsA4: 1, sheetsA3: 0, presses: 1 },
       { id: 'sub_a3', name: 'Estampado Grande A3 (1 Cara)', multiplier: 1.30, sheetsA4: 0, sheetsA3: 1, presses: 1 },
       { id: 'sub_dual', name: 'Frente + Espalda (2 Caras)', multiplier: 1.75, sheetsA4: 1, sheetsA3: 1, presses: 2 }

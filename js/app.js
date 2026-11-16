@@ -688,36 +688,36 @@ function toggleConfigModal() {
 function renderConfigInputs() {
   // Columna 1: Prendas en Blanco
   document.getElementById('modalProductsConfig').innerHTML = products.map((p, i) => `
-    <div class="flex items-center justify-between gap-3 bg-slate-950/70 p-2.5 rounded-xl border border-slate-800/90">
-      <span class="text-xs font-medium text-slate-300 truncate">${p.name}</span>
-      <div class="relative w-24 shrink-0">
-        <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-500">$</span>
+    <div class="flex items-center justify-between gap-2.5 bg-slate-950/70 p-2.5 rounded-xl border border-slate-800/90">
+      <span class="text-xs font-medium text-slate-300 leading-snug">${p.name}</span>
+      <div class="relative w-20 shrink-0">
+        <span class="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-slate-500">$</span>
         <input type="number" step="0.05" min="0" id="cfg_prod_${i}" value="${p.blankCost}"
-          class="w-full bg-slate-900 border border-slate-700 rounded-lg py-1.5 pl-6 pr-2.5 text-right text-xs font-bold text-white focus:border-cyan-400 focus:outline-none">
+          class="w-full bg-slate-900 border border-slate-700 rounded-lg py-1.5 pl-5 pr-2 text-right text-xs font-bold text-white focus:border-cyan-400 focus:outline-none">
       </div>
     </div>
   `).join('');
 
   // Columna 2: Proveedores Externos (Yardas y Hojas)
   document.getElementById('modalSupplierConfig').innerHTML = SUPPLIER_LABELS.map(({ key, label }) => `
-    <div class="flex items-center justify-between gap-3 bg-slate-950/70 p-2.5 rounded-xl border border-slate-800/90">
-      <span class="text-xs font-medium text-slate-300 truncate">${label}</span>
-      <div class="relative w-24 shrink-0">
-        <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-500">$</span>
+    <div class="flex items-center justify-between gap-2.5 bg-slate-950/70 p-2.5 rounded-xl border border-slate-800/90">
+      <span class="text-xs font-medium text-slate-300 leading-snug">${label}</span>
+      <div class="relative w-20 shrink-0">
+        <span class="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-slate-500">$</span>
         <input type="number" step="0.05" min="0" id="cfg_sup_${key}" value="${supplierRates[key]}"
-          class="w-full bg-slate-900 border border-slate-700 rounded-lg py-1.5 pl-6 pr-2.5 text-right text-xs font-bold text-white focus:border-fuchsia-400 focus:outline-none">
+          class="w-full bg-slate-900 border border-slate-700 rounded-lg py-1.5 pl-5 pr-2 text-right text-xs font-bold text-white focus:border-fuchsia-400 focus:outline-none">
       </div>
     </div>
   `).join('');
 
   // Columna 3: Planchado en Casa
   document.getElementById('modalInHouseConfig').innerHTML = INHOUSE_LABELS.map(({ key, label }) => `
-    <div class="flex items-center justify-between gap-3 bg-slate-950/70 p-2.5 rounded-xl border border-slate-800/90">
-      <span class="text-xs font-medium text-slate-300 truncate">${label}</span>
-      <div class="relative w-24 shrink-0">
-        <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-500">$</span>
+    <div class="flex items-center justify-between gap-2.5 bg-slate-950/70 p-2.5 rounded-xl border border-slate-800/90">
+      <span class="text-xs font-medium text-slate-300 leading-snug">${label}</span>
+      <div class="relative w-20 shrink-0">
+        <span class="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-slate-500">$</span>
         <input type="number" step="0.05" min="0" id="cfg_inh_${key}" value="${inHouseCosts[key]}"
-          class="w-full bg-slate-900 border border-slate-700 rounded-lg py-1.5 pl-6 pr-2.5 text-right text-xs font-bold text-white focus:border-amber-400 focus:outline-none">
+          class="w-full bg-slate-900 border border-slate-700 rounded-lg py-1.5 pl-5 pr-2 text-right text-xs font-bold text-white focus:border-amber-400 focus:outline-none">
       </div>
     </div>
   `).join('');
