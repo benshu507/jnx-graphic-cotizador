@@ -588,93 +588,7 @@
     </main>
   </div>
 
-  <!-- PLANTILLA DE IMPRESIÓN PDF -->
-  <div id="printableInvoice" class="hidden max-w-4xl mx-auto bg-white text-slate-900 p-8">
-    <div class="flex justify-between items-start border-b-2 border-slate-900 pb-6">
-      <div class="flex items-center gap-4">
-        <div
-          class="w-20 h-20 rounded-2xl bg-slate-900 text-white flex items-center justify-center font-extrabold text-2xl overflow-hidden border border-slate-300">
-          <img id="pdfLogoImg" src="" alt="JNX Logo" class="hidden w-full h-full object-contain bg-white">
-          <span id="pdfLogoFallback">JNX</span>
-        </div>
-        <div>
-          <h1 class="text-2xl font-extrabold tracking-tight text-slate-900">JNX GRAPHIC</h1>
-          <p class="text-xs font-semibold text-cyan-700 uppercase tracking-wider">Diseño Gráfico • Personalización •
-            Publicidad</p>
-          <p class="text-xs text-slate-600 mt-1">Sublimación Full • Estampado DTF & DTF UV • Bordados</p>
-          <p class="text-xs text-slate-600">Panamá, República de Panamá</p>
-        </div>
-      </div>
 
-      <div class="text-right">
-        <span
-          class="inline-block bg-slate-900 text-white text-xs font-extrabold px-3 py-1 rounded uppercase tracking-wider">Cotización
-          Oficial</span>
-        <p id="pdfQuoteNumber" class="text-lg font-extrabold text-slate-900 mt-2">N° JNX-2026-001</p>
-        <p id="pdfDate" class="text-xs text-slate-600">Fecha: --/--/----</p>
-        <p class="text-xs text-slate-500 font-medium">Validez: 7 días calendario</p>
-      </div>
-    </div>
-
-    <div class="grid grid-cols-2 gap-6 my-6 bg-slate-100 p-4 rounded-xl border border-slate-200 text-xs">
-      <div>
-        <span class="text-slate-500 uppercase font-bold block mb-0.5">Preparado Para:</span>
-        <p id="pdfClientName" class="text-sm font-extrabold text-slate-900">Cliente General</p>
-        <p id="pdfClientContact" class="text-slate-700 mt-0.5"></p>
-      </div>
-      <div>
-        <span class="text-slate-500 uppercase font-bold block mb-0.5">Proyecto / Referencia:</span>
-        <p id="pdfProjectDesc" class="text-sm font-bold text-slate-900">Pedido de Personalización</p>
-      </div>
-    </div>
-
-    <table class="w-full text-left border-collapse mt-4">
-      <thead>
-        <tr class="bg-slate-900 text-white text-xs uppercase">
-          <th class="py-3 px-4 rounded-tl-lg">Cant.</th>
-          <th class="py-3 px-4">Descripción del Producto y Trabajo</th>
-          <th class="py-3 px-4 text-right">Precio Unitario</th>
-          <th class="py-3 px-4 text-right rounded-tr-lg">Total</th>
-        </tr>
-      </thead>
-      <tbody id="pdfTableBody" class="divide-y divide-slate-200 text-xs border-b border-slate-300"></tbody>
-    </table>
-
-    <div class="mt-6 flex justify-end">
-      <div class="w-72 space-y-2 text-xs">
-        <div class="flex justify-between py-1 text-slate-600"><span>Subtotal Artículos:</span><span id="pdfSubtotal"
-            class="font-bold text-slate-900">$0.00</span></div>
-        <div id="pdfTransportRow" class="hidden flex justify-between py-1 text-slate-600">
-          <span>Transporte/Logística:</span><span id="pdfTransportCost" class="font-bold text-slate-900">$0.00</span>
-        </div>
-        <div id="pdfUrgencyRow" class="hidden flex justify-between py-1 text-slate-600"><span>Recargo
-            Express:</span><span id="pdfUrgencyCost" class="font-bold text-slate-900">$0.00</span></div>
-        <div class="flex justify-between py-2.5 px-3 bg-slate-900 text-white rounded-lg text-sm font-extrabold">
-          <span>TOTAL A PAGAR:</span><span id="pdfGrandTotal">$0.00</span>
-        </div>
-        <div
-          class="flex justify-between py-2 px-3 bg-emerald-50 border border-emerald-300 text-emerald-900 rounded-lg font-bold">
-          <span>Abono 50% para iniciar:</span><span id="pdfDeposit">$0.00</span>
-        </div>
-        <div id="pdfBalanceRow"
-          class="hidden flex justify-between py-2 px-3 bg-amber-50 border border-amber-300 text-amber-900 rounded-lg font-extrabold">
-          <span>SALDO PENDIENTE CONTRA ENTREGA:</span><span id="pdfBalance">$0.00</span>
-        </div>
-      </div>
-    </div>
-
-    <div class="mt-10 pt-6 border-t border-slate-300 grid grid-cols-12 gap-6 text-[11px] text-slate-600">
-      <div class="col-span-8 space-y-1">
-        <p class="font-bold text-slate-900 uppercase">Términos y Condiciones:</p>
-        <p>1. Todo pedido requiere el <strong>50% de abono inicial</strong> para compra de materiales e inicio.</p>
-        <p>2. El 50% restante se cancela al momento de la entrega final.</p>
-        <p>3. Una vez aprobado el arte final y las tallas, no se realizan cambios ni devoluciones.</p>
-      </div>
-      <div class="col-span-4 flex flex-col justify-end items-center text-center pt-8">
-        <div class="w-44 border-t border-slate-400 pt-1 font-bold text-slate-800">Autorizado por JNX Graphic</div>
-      </div>
-    </div>
-  </div>
 
   <!-- MODAL AGREGAR NUEVO CLIENTE A LA BASE DE DATOS -->
   <div id="clientModal"
@@ -1015,6 +929,98 @@
           </button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- PLANTILLA DE IMPRESIÓN PDF -->
+  <div id="printableInvoice" class="hidden max-w-4xl mx-auto bg-white text-slate-900 p-8">
+    <div class="flex justify-between items-start border-b-2 border-slate-900 pb-6">
+      <div class="flex items-center gap-4">
+        <div
+          class="w-20 h-20 rounded-2xl bg-slate-900 text-white flex items-center justify-center font-extrabold text-2xl overflow-hidden border border-slate-300">
+          <img id="pdfLogoImg" src="" alt="JNX Logo" class="hidden w-full h-full object-contain bg-white">
+          <span id="pdfLogoFallback">JNX</span>
+        </div>
+        <div>
+          <h1 class="text-2xl font-extrabold tracking-tight text-slate-900">JNX GRAPHIC</h1>
+          <p class="text-xs font-semibold text-cyan-700 uppercase tracking-wider">Diseño Gráfico • Personalización •
+            Publicidad</p>
+          <p class="text-xs text-slate-600 mt-1">Sublimación Full • Estampado DTF & DTF UV • Bordados</p>
+          <p class="text-xs text-slate-600">Panamá, República de Panamá</p>
+        </div>
+      </div>
+
+      <div class="text-right">
+        <span
+          class="inline-block bg-slate-900 text-white text-xs font-extrabold px-3 py-1 rounded uppercase tracking-wider">Cotización
+          Oficial</span>
+        <p id="pdfQuoteNumber" class="text-lg font-extrabold text-slate-900 mt-2">N° JNX-2026-001</p>
+        <p id="pdfDate" class="text-xs text-slate-600">Fecha: --/--/----</p>
+        <p class="text-xs text-slate-500 font-medium">Validez: 7 días calendario</p>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-2 gap-6 my-6 bg-slate-100 p-4 rounded-xl border border-slate-200 text-xs">
+      <div>
+        <span class="text-slate-500 uppercase font-bold block mb-0.5">Preparado Para:</span>
+        <p id="pdfClientName" class="text-sm font-extrabold text-slate-900">Cliente General</p>
+        <p id="pdfClientContact" class="text-slate-700 mt-0.5"></p>
+      </div>
+      <div>
+        <span class="text-slate-500 uppercase font-bold block mb-0.5">Proyecto / Referencia:</span>
+        <p id="pdfProjectDesc" class="text-sm font-bold text-slate-900">Pedido de Personalización</p>
+      </div>
+    </div>
+
+    <table class="w-full text-left border-collapse mt-4">
+      <thead>
+        <tr class="bg-slate-900 text-white text-xs uppercase">
+          <th class="py-3 px-4 rounded-tl-lg">Cant.</th>
+          <th class="py-3 px-4">Descripción del Producto y Trabajo</th>
+          <th class="py-3 px-4 text-right">Precio Unitario</th>
+          <th class="py-3 px-4 text-right rounded-tr-lg">Total</th>
+        </tr>
+      </thead>
+      <tbody id="pdfTableBody" class="divide-y divide-slate-200 text-xs border-b border-slate-300"></tbody>
+    </table>
+
+    <div class="mt-6 flex justify-end">
+      <div class="w-72 space-y-2 text-xs">
+        <div class="flex justify-between py-1 text-slate-600"><span>Subtotal Artículos:</span><span id="pdfSubtotal"
+            class="font-bold text-slate-900">$0.00</span></div>
+        <div id="pdfTransportRow" class="hidden flex justify-between py-1 text-slate-600">
+          <span>Transporte/Logística:</span><span id="pdfTransportCost" class="font-bold text-slate-900">$0.00</span>
+        </div>
+        <div id="pdfUrgencyRow" class="hidden flex justify-between py-1 text-slate-600"><span>Recargo
+            Express:</span><span id="pdfUrgencyCost" class="font-bold text-slate-900">$0.00</span></div>
+        <div class="flex justify-between py-2.5 px-3 bg-slate-900 text-white rounded-lg text-sm font-extrabold">
+          <span>TOTAL A PAGAR:</span><span id="pdfGrandTotal">$0.00</span>
+        </div>
+        <div
+          class="flex justify-between py-2 px-3 bg-emerald-50 border border-emerald-300 text-emerald-900 rounded-lg font-bold">
+          <span>Abono 50% para iniciar:</span><span id="pdfDeposit">$0.00</span>
+        </div>
+        <div id="pdfBalanceRow"
+          class="hidden flex justify-between py-2 px-3 bg-amber-50 border border-amber-300 text-amber-900 rounded-lg font-extrabold">
+          <span>SALDO PENDIENTE CONTRA ENTREGA:</span><span id="pdfBalance">$0.00</span>
+        </div>
+        <!-- NOTA INFORMATIVA DE ITBMS INCLUIDO POR UNIDAD -->
+        <p id="pdfItbmsNote" class="hidden text-[11px] text-slate-600 italic text-right pt-1 font-medium">
+          * Nota: El precio unitario y el total ya incluyen el ITBMS (7%).
+        </p>
+      </div>
+    </div>
+
+    <div class="mt-10 pt-6 border-t border-slate-300 grid grid-cols-12 gap-6 text-[11px] text-slate-600">
+      <div class="col-span-8 space-y-1">
+        <p class="font-bold text-slate-900 uppercase">Términos y Condiciones:</p>
+        <p>1. Todo pedido requiere el <strong>50% de abono inicial</strong> para compra de materiales e inicio.</p>
+        <p>2. El 50% restante se cancela al momento de la entrega final.</p>
+        <p>3. Una vez aprobado el arte final y las tallas, no se realizan cambios ni devoluciones.</p>
+      </div>
+      <div class="col-span-4 flex flex-col justify-end items-center text-center pt-8">
+        <div class="w-44 border-t border-slate-400 pt-1 font-bold text-slate-800">Autorizado por JNX Graphic</div>
+      </div>
     </div>
   </div>
 

@@ -939,6 +939,13 @@ function printDirectQuoteFromCloud(docId) {
     if (balRow) balRow.classList.add('hidden');
   }
 
+  const hasItbms = itemsToPrint.some(item => Number(item.itbmsAmount || 0) > 0 || item.includeItbms === true);
+  const itbmsNoteEl = document.getElementById('pdfItbmsNote');
+  if (itbmsNoteEl) {
+    if (hasItbms) itbmsNoteEl.classList.remove('hidden');
+    else itbmsNoteEl.classList.add('hidden');
+  }
+
   window.print();
 }
 

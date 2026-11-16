@@ -361,12 +361,17 @@ function calculateAll() {
     itbmsAmount = includeItbms ? subtotalClient * 0.07 : 0;
     finalClientTotal = subtotalClient + itbmsAmount;
     unitClientPrice = finalClientTotal / totalQty;
+
+    const priceInput = document.getElementById('unitClientPriceInput');
+    if (priceInput && document.activeElement !== priceInput) {
+      priceInput.value = Number(manualPriceOverride).toFixed(2);
+    }
   } else {
     subtotalClient = totalInternalCost * (1 + (marginPercent / 100));
     itbmsAmount = includeItbms ? subtotalClient * 0.07 : 0;
     finalClientTotal = subtotalClient + itbmsAmount;
     unitClientPrice = finalClientTotal / totalQty;
-    document.getElementById('unitClientPriceInput').value = unitClientPrice.toFixed(2);
+    document.getElementById('unitClientPriceInput').value = (subtotalClient / totalQty).toFixed(2);
   }
 
   const netProfit = subtotalClient - totalInternalCost;
@@ -503,10 +508,25 @@ function editCartItem(id) {
     toggleItbms();
   }
 
-  // 8. Restaurar Precio Manual si fue editado
+  // 8. Restaurar siempre el Precio Unitario exacto con el que se cotizó originalmente
+  const qtyVal = Number(item.qty) || 1;
+  let savedBaseUnit = null;
+
   if (item.manualPriceOverride !== undefined && item.manualPriceOverride !== null) {
-    manualPriceOverride = item.manualPriceOverride;
-    document.getElementById('unitClientPriceInput').value = Number(manualPriceOverride).toFixed(2);
+    savedBaseUnit = Number(item.manualPriceOverride);
+  } else if (item.subtotalClient !== undefined) {
+    // Calcular el unitario base exacto a partir del subtotal sin ITBMS
+    savedBaseUnit = Number(item.subtotalClient) / qtyVal;
+  } else if (item.unitClientPrice !== undefined) {
+    // Respaldo para cotizaciones antiguas
+    savedBaseUnit = shouldHaveItbms
+      ? (Number(item.unitClientPrice) / 1.07)
+      : Number(item.unitClientPrice);
+  }
+
+  if (savedBaseUnit !== null && !isNaN(savedBaseUnit)) {
+    manualPriceOverride = Number(savedBaseUnit.toFixed(2));
+    document.getElementById('unitClientPriceInput').value = manualPriceOverride.toFixed(2);
     document.getElementById('manualPriceIndicator').classList.remove('hidden');
   } else {
     manualPriceOverride = null;
@@ -682,6 +702,13 @@ function printQuotePDF() {
 
   if (document.getElementById('pdfGrandTotal')) document.getElementById('pdfGrandTotal').textContent = `$${grandTotal.toFixed(2)}`;
   if (document.getElementById('pdfDeposit')) document.getElementById('pdfDeposit').textContent = `$${deposit.toFixed(2)}`;
+
+  const hasItbms = itemsToPrint.some(item => Number(item.itbmsAmount || 0) > 0 || item.includeItbms === true);
+  const itbmsNoteEl = document.getElementById('pdfItbmsNote');
+  if (itbmsNoteEl) {
+    if (hasItbms) itbmsNoteEl.classList.remove('hidden');
+    else itbmsNoteEl.classList.add('hidden');
+  }
 
   window.print();
 }
