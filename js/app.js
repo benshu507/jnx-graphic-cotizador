@@ -394,7 +394,7 @@ function calculateAll() {
   document.getElementById('summaryProduct').textContent = product.name;
   document.getElementById('summaryQty').textContent = qtyText;
   document.getElementById('summaryTech').textContent = `${technique.name.split('(')[0]} (${selectedOption ? selectedOption.text.split('(')[0].trim() : ''})`;
-  document.getElementById('summaryDeposit').textContent = `$${finalClientTotal.toFixed(2)}`;
+  document.getElementById('summaryDeposit').textContent = `$${subtotalClient.toFixed(2)}`;
 
   const itbmsRow = document.getElementById('itbmsSummaryRow');
   if (includeItbms) {
