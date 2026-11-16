@@ -17,6 +17,10 @@ let currentHistoryTab = 'activos'; // 'activos' | 'produccion' | 'vencidos' | 'p
 window.loadedCloudQuotes = [];
 window.loadedClients = [];
 let selectedDirectoryClientId = null;
+window.editingQuoteId = null;
+window.editingQuoteFolio = null;
+window.editingQuoteAmountPaid = 0;
+window.editingQuoteStatus = 'Activo';
 
 try {
   if (typeof firebase !== 'undefined' && firebaseConfig.apiKey !== "PEGA_AQUI_TU_API_KEY") {
@@ -305,19 +309,56 @@ async function saveQuoteToFirebase() {
   });
 
   const urgencyAmount = (itemsSubtotal + globalTransport) * globalUrgencyRate;
-  const grandTotal = itemsSubtotal + globalTransport + urgencyAmount;
-  const totalNetProfit = itemsProfit + urgencyAmount;
+  const subtotalBeforeDiscount = itemsSubtotal + globalTransport + urgencyAmount;
+  const { discountAmount, label: discountLabel } = typeof getCommercialDiscountData === 'function'
+    ? getCommercialDiscountData(subtotalBeforeDiscount)
+    : { discountAmount: 0, label: '' };
+
+  const grandTotal = Math.max(0, subtotalBeforeDiscount - discountAmount);
+  const totalNetProfit = itemsProfit + urgencyAmount - discountAmount;
 
   const btnSave = document.getElementById('btnSaveCloudText');
-  if (btnSave) btnSave.textContent = "Guardando en la nube...";
+  if (btnSave) btnSave.textContent = window.editingQuoteId ? "Actualizando cotización..." : "Guardando en la nube...";
 
   try {
-    const quoteFolio = await getNextFolioSequential();
     const now = new Date();
+
+    // CASO 1: ESTAMOS EDITANDO UNA COTIZACIÓN EXISTENTE
+    if (window.editingQuoteId) {
+      const prevPaid = Number(window.editingQuoteAmountPaid || 0);
+      const newBalanceDue = Math.max(0, Number((grandTotal - prevPaid).toFixed(2)));
+
+      await db.collection("cotizaciones_jnx").doc(window.editingQuoteId).update({
+        clientId: clientId,
+        clientName: client,
+        clientContact: contact,
+        projectDesc: project,
+        deliveryDate: deliveryDate,
+        items: itemsToSave,
+        transportCost: globalTransport,
+        urgencyRate: globalUrgencyRate,
+        urgencyAmount: urgencyAmount,
+        discountAmount: discountAmount,
+        discountLabel: discountLabel,
+        grandTotal: Number(grandTotal.toFixed(2)),
+        deposit50: Number((grandTotal * 0.5).toFixed(2)),
+        balanceDue: newBalanceDue,
+        netProfit: Number(totalNetProfit.toFixed(2)),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+
+      const updatedFolio = window.editingQuoteFolio;
+      alert(`✅ ¡Cotización actualizada con éxito!\n\nFolio mantenido: ${updatedFolio}\nCliente: ${client}\nNuevo Total: $${grandTotal.toFixed(2)}`);
+      clearFullQuoterScreen();
+      return;
+    }
+
+    // CASO 2: ES UNA COTIZACIÓN NUEVA (GENERA NUEVO CONSECUTIVO)
+    const quoteFolio = await getNextFolioSequential();
 
     await db.collection("cotizaciones_jnx").add({
       folio: quoteFolio,
-      status: 'Activo', // 'Activo' | 'En Producción' | 'Pagado' | 'Cancelado'
+      status: 'Activo',
       clientId: clientId,
       clientName: client,
       clientContact: contact,
@@ -327,6 +368,8 @@ async function saveQuoteToFirebase() {
       transportCost: globalTransport,
       urgencyRate: globalUrgencyRate,
       urgencyAmount: urgencyAmount,
+      discountAmount: discountAmount,
+      discountLabel: discountLabel,
       grandTotal: Number(grandTotal.toFixed(2)),
       deposit50: Number((grandTotal * 0.5).toFixed(2)),
       amountPaid: 0,
@@ -338,16 +381,34 @@ async function saveQuoteToFirebase() {
       timestampMs: now.getTime()
     });
 
-    if (btnSave) btnSave.textContent = "Guardar Cotización en la Nube (Firebase)";
     alert(`✅ ¡Cotización registrada con éxito!\n\nFolio: ${quoteFolio}\nCliente: ${client}\nTotal: $${grandTotal.toFixed(2)}`);
     clearFullQuoterScreen();
   } catch (error) {
+    console.error("Error al guardar en Firebase:", error);
     alert("❌ Error al guardar en Firebase: " + error.message);
-    if (btnSave) btnSave.textContent = "Guardar Cotización en la Nube (Firebase)";
+  } finally {
+    if (btnSave) {
+      btnSave.textContent = window.editingQuoteId
+        ? `Actualizar Cotización (${window.editingQuoteFolio})`
+        : "Guardar Cotización en la Nube (Firebase)";
+    }
   }
 }
 
 function clearFullQuoterScreen() {
+
+  window.editingQuoteId = null;
+  window.editingQuoteFolio = null;
+  window.editingQuoteAmountPaid = 0;
+  window.editingQuoteStatus = 'Activo';
+
+  if (document.getElementById('editingFolioBadge')) {
+    document.getElementById('editingFolioBadge').classList.add('hidden');
+  }
+  if (document.getElementById('btnSaveCloudText')) {
+    document.getElementById('btnSaveCloudText').textContent = "Guardar Cotización en la Nube (Firebase)";
+  }
+
   document.getElementById('clientName').value = "";
   if (document.getElementById('selectedClientId')) document.getElementById('selectedClientId').value = "";
   if (document.getElementById('clientLinkedBadge')) document.getElementById('clientLinkedBadge').classList.add('hidden');
@@ -699,6 +760,24 @@ function restoreQuoteFromCloud(docId) {
   const q = (window.loadedCloudQuotes || []).find(item => item.id === docId);
   if (!q || q.status === 'Cancelado') return;
 
+  // Activar estado de edición para no duplicar el consecutivo
+  window.editingQuoteId = q.id;
+  window.editingQuoteFolio = q.folio || 'S/N';
+  window.editingQuoteAmountPaid = Number(q.amountPaid || 0);
+  window.editingQuoteStatus = q.status || 'Activo';
+
+  const editBadge = document.getElementById('editingFolioBadge');
+  const editText = document.getElementById('editingFolioText');
+  if (editBadge && editText) {
+    editText.textContent = `Editando: ${window.editingQuoteFolio}`;
+    editBadge.classList.remove('hidden');
+  }
+
+  const btnSave = document.getElementById('btnSaveCloudText');
+  if (btnSave) {
+    btnSave.textContent = `Actualizar Cotización (${window.editingQuoteFolio})`;
+  }
+
   document.getElementById('clientName').value = q.clientName || '';
   if (document.getElementById('selectedClientId')) document.getElementById('selectedClientId').value = q.clientId || '';
   if (document.getElementById('clientLinkedBadge')) {
@@ -716,9 +795,25 @@ function restoreQuoteFromCloud(docId) {
     document.getElementById('urgencySelect').value = String(q.urgencyRate);
   }
 
+  if (q.discountAmount && Number(q.discountAmount) > 0 && document.getElementById('discountSelect')) {
+    document.getElementById('discountSelect').value = "custom_fixed";
+    document.getElementById('customDiscountValue').value = Number(q.discountAmount).toFixed(2);
+    const cleanReason = (q.discountLabel || '').split('•')[1]?.trim() || '';
+    if (document.getElementById('discountReasonInput')) document.getElementById('discountReasonInput').value = cleanReason;
+    if (typeof toggleCustomDiscountInput === 'function') toggleCustomDiscountInput();
+  } else if (document.getElementById('discountSelect')) {
+    document.getElementById('discountSelect').value = "0";
+    if (typeof toggleCustomDiscountInput === 'function') toggleCustomDiscountInput();
+  }
+
   cart = Array.isArray(q.items) ? q.items.map(it => ({ ...it, id: Date.now() + Math.random() })) : [];
   renderCart();
-  toggleHistoryModal();
+
+  const histModal = document.getElementById('historyModal');
+  if (histModal && !histModal.classList.contains('hidden')) {
+    histModal.classList.add('hidden');
+  }
+  if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
 async function markQuoteAsPaid(docId, folio) {

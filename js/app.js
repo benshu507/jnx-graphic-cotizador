@@ -377,6 +377,16 @@ function calculateAll() {
   }
 
   currentCalculation = {
+    prodId,
+    techId,
+    variantId,
+    designValue: designSelect,
+    isMixedSizes,
+    qtyAdults,
+    qtyKids,
+    includeItbms,
+    manualPriceOverride,
+    marginPercent,
     productName: product.name,
     techniqueName: technique.name,
     placementName: selectedOption ? selectedOption.text : '',
@@ -432,6 +442,83 @@ function removeCartItem(id) {
   renderCart();
 }
 
+function editCartItem(id) {
+  const item = cart.find(it => it.id === id);
+  if (!item) return;
+
+  // 1. Retirar temporalmente del carrito para que lo edites y vuelvas a agregar
+  cart = cart.filter(it => it.id !== id);
+  renderCart();
+
+  // 2. Encontrar el producto (por ID nuevo o por nombre en cotizaciones antiguas)
+  const prodObj = products.find(p => p.id === item.prodId || p.name === item.productName);
+  if (!prodObj) return;
+
+  const prodSelect = document.getElementById('productSelect');
+  prodSelect.value = prodObj.id;
+  updateTechniquesForProduct(prodObj.id);
+  checkIfTextile(prodObj.id);
+
+  // 3. Seleccionar Técnica
+  const techObj = techniques.find(t => t.id === item.techId || t.name === item.techniqueName);
+  if (techObj) {
+    document.getElementById('techniqueSelect').value = techObj.id;
+    updateTechniqueVariants(techObj.id);
+
+    // 4. Seleccionar Cobertura / Variante
+    const placeSelect = document.getElementById('placementSelect');
+    if (item.variantId) {
+      placeSelect.value = item.variantId;
+    } else if (item.placementName) {
+      const opt = Array.from(placeSelect.options).find(o => o.text === item.placementName);
+      if (opt) placeSelect.value = opt.value;
+    }
+  }
+
+  // 5. Restaurar Cantidades (Simples o Tallas Mixtas)
+  if (item.isMixedSizes) {
+    document.getElementById('mixedSizesCheckbox').checked = true;
+    isMixedSizes = true;
+    document.getElementById('singleQuantityBox').classList.add('hidden');
+    document.getElementById('splitQuantityBox').classList.remove('hidden');
+    document.getElementById('qtyAdults').value = item.qtyAdults || 0;
+    document.getElementById('qtyKids').value = item.qtyKids || 0;
+  } else {
+    document.getElementById('mixedSizesCheckbox').checked = false;
+    isMixedSizes = false;
+    document.getElementById('singleQuantityBox').classList.remove('hidden');
+    document.getElementById('splitQuantityBox').classList.add('hidden');
+    document.getElementById('quantityInput').value = item.qty || 1;
+  }
+
+  // 6. Restaurar Arte / Diseño y Margen
+  document.getElementById('designSelect').value = item.designValue !== undefined ? String(item.designValue) : "0";
+  if (item.marginPercent) {
+    document.getElementById('profitMarginInput').value = item.marginPercent;
+  }
+
+  // 7. Restaurar estado de ITBMS
+  const shouldHaveItbms = item.includeItbms !== undefined ? item.includeItbms : (Number(item.itbmsAmount || 0) > 0);
+  if (includeItbms !== shouldHaveItbms) {
+    toggleItbms();
+  }
+
+  // 8. Restaurar Precio Manual si fue editado
+  if (item.manualPriceOverride !== undefined && item.manualPriceOverride !== null) {
+    manualPriceOverride = item.manualPriceOverride;
+    document.getElementById('unitClientPriceInput').value = Number(manualPriceOverride).toFixed(2);
+    document.getElementById('manualPriceIndicator').classList.remove('hidden');
+  } else {
+    manualPriceOverride = null;
+    document.getElementById('manualPriceIndicator').classList.add('hidden');
+  }
+
+  calculateAll();
+
+  // Desplazar suavemente hacia la sección 2 para editar
+  document.getElementById('productSelect').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
 function clearCart() {
   cart = [];
   renderCart();
@@ -460,18 +547,27 @@ function renderCart() {
     itemsSubtotal += item.finalClientTotal;
     itemsProfit += item.netProfit;
     return `
-      <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-3 flex items-center justify-between gap-2">
+      <div class="bg-slate-900/90 border border-slate-800 hover:border-cyan-500/40 rounded-xl p-3 flex items-center justify-between gap-2 transition">
         <div>
           <p class="text-xs font-bold text-white">${item.qtyText} de ${item.productName}</p>
           <p class="text-[11px] text-slate-400">${item.techniqueName.split('(')[0]} • $${item.unitClientPrice.toFixed(2)} c/u</p>
         </div>
-        <div class="flex items-center gap-3">
-          <span class="text-sm font-extrabold text-cyan-400">$${item.finalClientTotal.toFixed(2)}</span>
-          <button onclick="removeCartItem(${item.id})" class="text-slate-500 hover:text-red-400 text-xs font-bold">✕</button>
+        <div class="flex items-center gap-2">
+          <span class="text-sm font-extrabold text-cyan-400 mr-1">$${item.finalClientTotal.toFixed(2)}</span>
+          <button onclick="editCartItem(${item.id})" title="Editar este artículo en el configurador"
+            class="p-1.5 rounded-lg bg-slate-800 hover:bg-cyan-500/20 text-cyan-400 border border-slate-700 transition">
+            <i data-lucide="pencil" class="w-3.5 h-3.5"></i>
+          </button>
+          <button onclick="removeCartItem(${item.id})" title="Eliminar artículo"
+            class="p-1.5 rounded-lg bg-slate-800 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 border border-slate-700 text-xs font-bold transition">
+            ✕
+          </button>
         </div>
       </div>
     `;
   }).join('');
+
+  if (typeof lucide !== 'undefined') lucide.createIcons();
 
   document.getElementById('cartItemsSubtotal').textContent = `$${itemsSubtotal.toFixed(2)}`;
 
@@ -524,7 +620,9 @@ function printQuotePDF() {
 
   const now = new Date();
   const dateStr = now.toLocaleDateString('es-PA', { year: 'numeric', month: 'long', day: 'numeric' });
-  const quoteNum = `N° JNX-${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${Math.floor(100 + Math.random() * 900)}`;
+  const quoteNum = window.editingQuoteFolio
+    ? `N° ${window.editingQuoteFolio}`
+    : `N° JNX-${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${Math.floor(100 + Math.random() * 900)}`;
 
   if (document.getElementById('pdfQuoteNumber')) document.getElementById('pdfQuoteNumber').textContent = quoteNum;
   if (document.getElementById('pdfDate')) document.getElementById('pdfDate').textContent = `Fecha: ${dateStr}`;

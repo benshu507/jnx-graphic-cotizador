@@ -210,15 +210,26 @@
       <section class="lg:col-span-7 space-y-6">
         <!-- 1. Datos del Cliente con Autocompletado y Registro -->
         <div class="glass-card rounded-2xl p-5 relative z-20">
-          <div class="flex items-center justify-between mb-4">
+          <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+            <h2 class="text-sm font-bold uppercase tracking-wider text-cyan-400 flex items-center gap-2">
+              <i data-lucide="user-check" class="w-4 h-4"></i> 1. Datos de la Cotización
+            </h2>
             <div class="flex items-center gap-2">
-              <i data-lucide="user-check" class="w-5 h-5 text-cyan-400"></i>
-              <h2 class="font-bold text-base text-white">1. Datos de la Cotización</h2>
+              <!-- INSIGNIA DE FOLIO EN EDICIÓN -->
+              <div id="editingFolioBadge"
+                class="hidden flex items-center gap-1.5 text-[11px] bg-amber-500/15 text-amber-300 px-2.5 py-0.5 rounded-full border border-amber-500/40 font-extrabold">
+                <i data-lucide="pencil" class="w-3 h-3"></i>
+                <span id="editingFolioText">Editando: JNX-00000</span>
+                <button type="button" onclick="clearFullQuoterScreen()"
+                  title="Cancelar edición y crear cotización nueva"
+                  class="ml-1 text-amber-400 hover:text-white font-bold">✕</button>
+              </div>
+
+              <span id="clientLinkedBadge"
+                class="hidden text-[10px] bg-cyan-500/15 text-cyan-300 px-2.5 py-0.5 rounded-full border border-cyan-500/30 font-semibold">
+                Cliente Registrado ✓
+              </span>
             </div>
-            <span id="clientLinkedBadge"
-              class="hidden text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
-              Cliente Registrado ✓
-            </span>
           </div>
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 items-start">
             <div class="relative">
