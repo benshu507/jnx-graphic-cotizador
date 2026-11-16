@@ -302,7 +302,7 @@ function calculateAll() {
   const costKidBlank = product.blankCost * 0.80;
   const totalBlankCost = (costAdultBlank * qtyAdults) + (costKidBlank * qtyKids);
 
-  // 2. Costo de Proveedor (Calculado con tus tarifas en Yardas / Hojas) y 3. Planchado en Casa
+  // 2. Costo de Proveedor y 3. Planchado en Casa
   let totalSupplierCost = 0;
   let totalInHouseCost = 0;
 
@@ -357,16 +357,10 @@ function calculateAll() {
   let itbmsAmount = 0;
 
   if (manualPriceOverride !== null) {
-    unitClientPrice = manualPriceOverride;
-    finalClientTotal = unitClientPrice * totalQty;
-
-    if (includeItbms) {
-      subtotalClient = finalClientTotal / 1.07;
-      itbmsAmount = finalClientTotal - subtotalClient;
-    } else {
-      subtotalClient = finalClientTotal;
-      itbmsAmount = 0;
-    }
+    subtotalClient = manualPriceOverride * totalQty;
+    itbmsAmount = includeItbms ? subtotalClient * 0.07 : 0;
+    finalClientTotal = subtotalClient + itbmsAmount;
+    unitClientPrice = finalClientTotal / totalQty;
   } else {
     subtotalClient = totalInternalCost * (1 + (marginPercent / 100));
     itbmsAmount = includeItbms ? subtotalClient * 0.07 : 0;
