@@ -300,6 +300,7 @@ async function saveQuoteToFirebase() {
   const globalTransport = transSel && transSel.value !== "" ? parseFloat(transSel.value) : 0;
   const urgSel = document.getElementById('urgencySelect');
   const globalUrgencyRate = urgSel && urgSel.value !== "" ? parseFloat(urgSel.value) : 0;
+  const depositRate = typeof getSelectedDepositRate === 'function' ? getSelectedDepositRate() : 0.60;
 
   let itemsSubtotal = 0;
   let itemsProfit = 0;
@@ -315,6 +316,7 @@ async function saveQuoteToFirebase() {
     : { discountAmount: 0, label: '' };
 
   const grandTotal = Math.max(0, subtotalBeforeDiscount - discountAmount);
+  const depositAmount = Number((grandTotal * depositRate).toFixed(2));
   const totalNetProfit = itemsProfit + urgencyAmount - discountAmount;
 
   const btnSave = document.getElementById('btnSaveCloudText');
@@ -323,7 +325,6 @@ async function saveQuoteToFirebase() {
   try {
     const now = new Date();
 
-    // CASO 1: ESTAMOS EDITANDO UNA COTIZACIÓN EXISTENTE
     if (window.editingQuoteId) {
       const prevPaid = Number(window.editingQuoteAmountPaid || 0);
       const newBalanceDue = Math.max(0, Number((grandTotal - prevPaid).toFixed(2)));
@@ -341,7 +342,8 @@ async function saveQuoteToFirebase() {
         discountAmount: discountAmount,
         discountLabel: discountLabel,
         grandTotal: Number(grandTotal.toFixed(2)),
-        deposit50: Number((grandTotal * 0.5).toFixed(2)),
+        depositRate: depositRate,
+        deposit50: depositAmount,
         balanceDue: newBalanceDue,
         netProfit: Number(totalNetProfit.toFixed(2)),
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -353,7 +355,6 @@ async function saveQuoteToFirebase() {
       return;
     }
 
-    // CASO 2: ES UNA COTIZACIÓN NUEVA (GENERA NUEVO CONSECUTIVO)
     const quoteFolio = await getNextFolioSequential();
 
     await db.collection("cotizaciones_jnx").add({
@@ -371,7 +372,8 @@ async function saveQuoteToFirebase() {
       discountAmount: discountAmount,
       discountLabel: discountLabel,
       grandTotal: Number(grandTotal.toFixed(2)),
-      deposit50: Number((grandTotal * 0.5).toFixed(2)),
+      depositRate: depositRate,
+      deposit50: depositAmount,
       amountPaid: 0,
       balanceDue: Number(grandTotal.toFixed(2)),
       payments: [],
@@ -396,7 +398,6 @@ async function saveQuoteToFirebase() {
 }
 
 function clearFullQuoterScreen() {
-
   window.editingQuoteId = null;
   window.editingQuoteFolio = null;
   window.editingQuoteAmountPaid = 0;
@@ -420,6 +421,14 @@ function clearFullQuoterScreen() {
   if (transSel) transSel.value = "";
   const urgSel = document.getElementById('urgencySelect');
   if (urgSel) urgSel.value = "";
+
+  if (document.getElementById('discountSelect')) document.getElementById('discountSelect').value = "0";
+  if (document.getElementById('customDiscountValue')) document.getElementById('customDiscountValue').value = "0";
+  if (document.getElementById('discountReasonInput')) document.getElementById('discountReasonInput').value = "";
+  if (typeof toggleCustomDiscountInput === 'function') toggleCustomDiscountInput();
+  if (typeof toggleExtrasSection === 'function') toggleExtrasSection(false);
+
+  if (document.getElementById('depositRateSelect')) document.getElementById('depositRateSelect').value = "0.60";
 
   clearCart();
   resetItemForm();
@@ -548,6 +557,9 @@ function renderFilteredQuotes() {
     const grandTotal = Number(q.grandTotal || 0);
     const amountPaid = isPaid ? grandTotal : Number(q.amountPaid || 0);
     const balanceDue = isPaid ? 0 : Math.max(0, grandTotal - amountPaid);
+    const depRate = Number(q.depositRate || 0.60);
+    const depPct = Math.round(depRate * 100);
+    const suggestedDep = Number(q.deposit50 || (grandTotal * depRate));
 
     let badgeColor = "bg-cyan-500/15 text-cyan-400 border border-cyan-500/30";
     let statusLabel = "";
@@ -568,10 +580,9 @@ function renderFilteredQuotes() {
 
     const deliveryAlert = getDeliveryAlertBadge(q.deliveryDate, q.status);
 
-    // Desglose financiero en la tarjeta según si ya tiene abonos reales o solo el estimado
     const financialLine = (amountPaid > 0 && !isPaid)
       ? `Abonado: <span class="text-emerald-400 font-bold">$${amountPaid.toFixed(2)}</span> • Saldo Pendiente: <span class="text-amber-400 font-extrabold">$${balanceDue.toFixed(2)}</span>`
-      : `Abono 50% sugerido: <span class="text-emerald-400 font-semibold">$${Number(q.deposit50 || 0).toFixed(2)}</span>`;
+      : `Abono ${depPct}% sugerido: <span class="text-emerald-400 font-semibold">$${suggestedDep.toFixed(2)}</span>`;
 
     return `
       <div class="bg-slate-900/90 border ${isCancelled ? 'border-rose-900/40 opacity-70' : isInProduction ? 'border-indigo-500/40' : 'border-slate-800 hover:border-cyan-500/40'} rounded-2xl p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 transition">
@@ -592,7 +603,7 @@ function renderFilteredQuotes() {
           </p>
         </div>
         
-<div class="flex flex-wrap md:flex-nowrap items-center gap-1.5 self-end md:self-center shrink-0">
+        <div class="flex flex-wrap md:flex-nowrap items-center gap-1.5 self-end md:self-center shrink-0">
           <div class="text-right mr-1.5 shrink-0">
             <span class="block text-[9px] text-slate-400 uppercase">Total</span>
             <span class="text-sm font-extrabold text-white ${isCancelled ? 'line-through text-slate-400' : ''}">$${grandTotal.toFixed(2)}</span>
@@ -659,6 +670,7 @@ function openPaymentModal(docId) {
   const grandTotal = Number(q.grandTotal || 0);
   const paidSoFar = Number(q.amountPaid || 0);
   const remaining = Math.max(0, grandTotal - paidSoFar);
+  const depRate = Number(q.depositRate || 0.60);
 
   document.getElementById('payModalDocId').value = docId;
   document.getElementById('payModalSubtitle').textContent = `${q.folio} • ${q.clientName}`;
@@ -666,8 +678,7 @@ function openPaymentModal(docId) {
   document.getElementById('payModalPaidSoFar').textContent = `$${paidSoFar.toFixed(2)}`;
   document.getElementById('payModalRemaining').textContent = `$${remaining.toFixed(2)}`;
 
-  // Sugerir el 50% si no ha abonado nada, o el saldo restante si ya abonó antes
-  const suggestedAmount = paidSoFar === 0 ? (grandTotal * 0.5) : remaining;
+  const suggestedAmount = paidSoFar === 0 ? (grandTotal * depRate) : remaining;
   document.getElementById('payModalAmount').value = suggestedAmount.toFixed(2);
   document.getElementById('payModalDeliveryDate').value = q.deliveryDate || '';
   document.getElementById('payModalRef').value = '';
@@ -686,7 +697,8 @@ function fillHalfOrRemainingPayment() {
   const grandTotal = Number(activePaymentQuote.grandTotal || 0);
   const paidSoFar = Number(activePaymentQuote.amountPaid || 0);
   const remaining = Math.max(0, grandTotal - paidSoFar);
-  const val = paidSoFar === 0 ? (grandTotal * 0.5) : remaining;
+  const depRate = Number(activePaymentQuote.depositRate || 0.60);
+  const val = paidSoFar === 0 ? (grandTotal * depRate) : remaining;
   document.getElementById('payModalAmount').value = val.toFixed(2);
 }
 
@@ -760,7 +772,6 @@ function restoreQuoteFromCloud(docId) {
   const q = (window.loadedCloudQuotes || []).find(item => item.id === docId);
   if (!q || q.status === 'Cancelado') return;
 
-  // Activar estado de edición para no duplicar el consecutivo
   window.editingQuoteId = q.id;
   window.editingQuoteFolio = q.folio || 'S/N';
   window.editingQuoteAmountPaid = Number(q.amountPaid || 0);
@@ -788,6 +799,10 @@ function restoreQuoteFromCloud(docId) {
   document.getElementById('projectDesc').value = q.projectDesc || '';
   if (document.getElementById('deliveryDate')) document.getElementById('deliveryDate').value = q.deliveryDate || '';
 
+  const hasTransport = q.transportCost !== undefined && Number(q.transportCost) > 0;
+  const hasUrgency = q.urgencyRate !== undefined && Number(q.urgencyRate) > 0;
+  const hasDiscount = q.discountAmount !== undefined && Number(q.discountAmount) > 0;
+
   if (q.transportCost !== undefined) {
     document.getElementById('transportSelect').value = String(q.transportCost);
   }
@@ -795,7 +810,7 @@ function restoreQuoteFromCloud(docId) {
     document.getElementById('urgencySelect').value = String(q.urgencyRate);
   }
 
-  if (q.discountAmount && Number(q.discountAmount) > 0 && document.getElementById('discountSelect')) {
+  if (hasDiscount && document.getElementById('discountSelect')) {
     document.getElementById('discountSelect').value = "custom_fixed";
     document.getElementById('customDiscountValue').value = Number(q.discountAmount).toFixed(2);
     const cleanReason = (q.discountLabel || '').split('•')[1]?.trim() || '';
@@ -804,6 +819,15 @@ function restoreQuoteFromCloud(docId) {
   } else if (document.getElementById('discountSelect')) {
     document.getElementById('discountSelect').value = "0";
     if (typeof toggleCustomDiscountInput === 'function') toggleCustomDiscountInput();
+  }
+
+  if (typeof toggleExtrasSection === 'function') {
+    toggleExtrasSection(hasTransport || hasUrgency || hasDiscount);
+  }
+
+  if (document.getElementById('depositRateSelect')) {
+    document.getElementById('depositRateSelect').value = q.depositRate ? Number(q.depositRate).toFixed(2) : "0.60";
+    manualDepositRateOverride = Boolean(q.depositRate);
   }
 
   cart = Array.isArray(q.items) ? q.items.map(it => ({ ...it, id: Date.now() + Math.random() })) : [];
@@ -861,9 +885,14 @@ function printDirectQuoteFromCloud(docId) {
 
   const globalTransport = Number(q.transportCost || 0);
   const urgencyAmount = Number(q.urgencyAmount || 0);
+  const discountAmount = Number(q.discountAmount || 0);
   const grandTotal = Number(q.grandTotal || 0);
   const amountPaid = Number(q.amountPaid || 0);
-  const deposit50 = Number(q.deposit50 || (grandTotal * 0.5));
+  const depRate = Number(q.depositRate || 0.60);
+  const depPct = Math.round(depRate * 100);
+  const deposit50 = Number(q.deposit50 || (grandTotal * depRate));
+
+  if (typeof updatePdfTermsByRate === 'function') updatePdfTermsByRate(depRate);
 
   if (document.getElementById('pdfQuoteNumber')) document.getElementById('pdfQuoteNumber').textContent = `N° ${q.folio || 'JNX-00000'}`;
   if (document.getElementById('pdfDate')) document.getElementById('pdfDate').textContent = `Fecha: ${q.dateString || 'Cotización Oficial'}`;
@@ -913,9 +942,17 @@ function printDirectQuoteFromCloud(docId) {
     pdfUrgRow.classList.add('hidden');
   }
 
+  const pdfDiscRow = document.getElementById('pdfDiscountRow');
+  if (discountAmount > 0 && pdfDiscRow) {
+    pdfDiscRow.classList.remove('hidden');
+    document.getElementById('pdfDiscountLabel').textContent = `${q.discountLabel || 'Descuento Comercial'}:`;
+    document.getElementById('pdfDiscountCost').textContent = `-$${discountAmount.toFixed(2)}`;
+  } else if (pdfDiscRow) {
+    pdfDiscRow.classList.add('hidden');
+  }
+
   if (document.getElementById('pdfGrandTotal')) document.getElementById('pdfGrandTotal').textContent = `$${grandTotal.toFixed(2)}`;
 
-  // Mostrar abono real y saldo pendiente si ya hay pagos registrados
   const depLabel = document.getElementById('pdfDepositLabel');
   const depVal = document.getElementById('pdfDeposit');
   const balRow = document.getElementById('pdfBalanceRow');
@@ -934,7 +971,7 @@ function printDirectQuoteFromCloud(docId) {
       balVal.textContent = `$${remaining.toFixed(2)}`;
     }
   } else {
-    if (depLabel) depLabel.textContent = 'Abono 50% para iniciar:';
+    if (depLabel) depLabel.textContent = depPct >= 100 ? 'Pago total requerido (100%):' : `Abono ${depPct}% para iniciar:`;
     if (depVal) depVal.textContent = `$${deposit50.toFixed(2)}`;
     if (balRow) balRow.classList.add('hidden');
   }

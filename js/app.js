@@ -5,11 +5,12 @@ let inHouseCosts = JSON.parse(localStorage.getItem('jnx_inhouse_costs')) || JSON
 
 let savedLogo = localStorage.getItem('jnx_custom_logo') || '';
 let internalMode = false;
-let includeItbms = false;
+let includeItbms = true; // Siempre inicia activo
 let isMixedSizes = false;
 let cart = [];
 let currentCalculation = null;
 let manualPriceOverride = null;
+let manualDepositRateOverride = false;
 
 const SUPPLIER_LABELS = [
   { key: 'dtf_yard', label: '1 Yarda DTF Textil ($/yd)' },
@@ -36,6 +37,7 @@ const INHOUSE_LABELS = [
 window.addEventListener('DOMContentLoaded', () => {
   populateSelects();
   applySavedLogo();
+  syncItbmsVisualState();
   calculateAll();
   lucide.createIcons();
 
@@ -170,6 +172,26 @@ function getVolumeEfficiencyMultiplier(qty) {
   return 1.00;
 }
 
+function syncItbmsVisualState() {
+  const btn = document.getElementById('btnToggleItbms');
+  const title = document.getElementById('itbmsTitle');
+  const indicator = document.getElementById('itbmsIndicator');
+  const track = document.getElementById('itbmsTrack');
+  if (!btn || !title || !indicator || !track) return;
+
+  if (includeItbms) {
+    btn.className = "w-full p-2 rounded-xl border border-cyan-500 bg-cyan-900/20 flex items-center justify-between transition cursor-pointer";
+    title.className = "text-xs font-bold text-cyan-400 leading-tight";
+    indicator.className = "w-4 h-4 rounded-full bg-cyan-400 translate-x-4 transition-transform";
+    track.className = "w-9 h-5 rounded-full bg-slate-800 p-0.5 transition flex items-center border border-cyan-500/50";
+  } else {
+    btn.className = "w-full p-2 rounded-xl border border-slate-700 bg-slate-900 flex items-center justify-between transition cursor-pointer hover:border-cyan-500/50";
+    title.className = "text-xs font-bold text-slate-200 leading-tight";
+    indicator.className = "w-4 h-4 rounded-full bg-slate-500 translate-x-0 transition-transform";
+    track.className = "w-9 h-5 rounded-full bg-slate-800 p-0.5 transition flex items-center border border-slate-700";
+  }
+}
+
 function resetItemForm() {
   document.getElementById('productSelect').value = "";
   document.getElementById('techniqueSelect').innerHTML = '<option value="" disabled selected>Seleccione primero un producto...</option>';
@@ -187,42 +209,20 @@ function resetItemForm() {
   document.getElementById('splitQuantityBox').classList.add('hidden');
   document.getElementById('mixedSizesToggleBox').classList.add('hidden');
 
-  includeItbms = false;
-  const btn = document.getElementById('btnToggleItbms');
-  const title = document.getElementById('itbmsTitle');
-  const indicator = document.getElementById('itbmsIndicator');
-  const track = document.getElementById('itbmsTrack');
-
-  btn.className = "w-full p-2.5 rounded-xl border border-slate-700 bg-slate-900 flex items-center justify-between transition cursor-pointer hover:border-cyan-500/50";
-  title.className = "text-[13px] font-bold text-slate-200 leading-tight";
-  indicator.className = "w-4 h-4 rounded-full bg-slate-500 translate-x-0 transition-transform";
-  track.className = "w-10 h-6 rounded-full bg-slate-800 p-1 transition flex items-center border border-slate-700";
+  // Mantener ITBMS activo por defecto para cada nuevo artículo
+  includeItbms = true;
+  syncItbmsVisualState();
 
   manualPriceOverride = null;
   document.getElementById('manualPriceIndicator').classList.add('hidden');
-  document.getElementById('profitMarginInput').value = 45;
+  document.getElementById('profitMarginInput').value = 55;
 
   calculateAll();
 }
 
 function toggleItbms() {
   includeItbms = !includeItbms;
-  const btn = document.getElementById('btnToggleItbms');
-  const title = document.getElementById('itbmsTitle');
-  const indicator = document.getElementById('itbmsIndicator');
-  const track = document.getElementById('itbmsTrack');
-
-  if (includeItbms) {
-    btn.className = "w-full p-2.5 rounded-xl border border-cyan-500 bg-cyan-900/20 flex items-center justify-between transition cursor-pointer";
-    title.className = "text-[13px] font-bold text-cyan-400 leading-tight";
-    indicator.className = "w-4 h-4 rounded-full bg-cyan-400 translate-x-4 transition-transform";
-    track.className = "w-10 h-6 rounded-full bg-slate-800 p-1 transition flex items-center border border-cyan-500/50";
-  } else {
-    btn.className = "w-full p-2.5 rounded-xl border border-slate-700 bg-slate-900 flex items-center justify-between transition cursor-pointer hover:border-cyan-500/50";
-    title.className = "text-[13px] font-bold text-slate-200 leading-tight";
-    indicator.className = "w-4 h-4 rounded-full bg-slate-500 translate-x-0 transition-transform";
-    track.className = "w-10 h-6 rounded-full bg-slate-800 p-1 transition flex items-center border border-slate-700";
-  }
+  syncItbmsVisualState();
   calculateAll();
 }
 
@@ -290,7 +290,7 @@ function calculateAll() {
   }
 
   const designCost = parseFloat(designSelect) || 0;
-  const marginPercent = parseFloat(document.getElementById('profitMarginInput').value) || 45;
+  const marginPercent = parseFloat(document.getElementById('profitMarginInput').value) || 55;
 
   const product = products.find(p => p.id === prodId) || products[0];
   const technique = techniques.find(t => t.id === techId) || techniques[0];
@@ -350,6 +350,7 @@ function calculateAll() {
   }
 
   const totalInternalCost = totalBlankCost + totalSupplierCost + totalInHouseCost + designCost;
+  const directOutOfPocketCost = totalBlankCost + totalSupplierCost + designCost;
 
   let unitClientPrice = 0;
   let finalClientTotal = 0;
@@ -402,6 +403,7 @@ function calculateAll() {
     itbmsAmount,
     unitClientPrice,
     totalInternalCost,
+    directOutOfPocketCost,
     netProfit
   };
 
@@ -438,12 +440,14 @@ function addItemToCart() {
     return;
   }
   cart.push({ id: Date.now(), ...currentCalculation });
+  manualDepositRateOverride = false; // Recalcular automáticamente según la suma de Costo Total Ítem
   renderCart();
   resetItemForm();
 }
 
 function removeCartItem(id) {
   cart = cart.filter(item => item.id !== id);
+  manualDepositRateOverride = false;
   renderCart();
 }
 
@@ -451,11 +455,10 @@ function editCartItem(id) {
   const item = cart.find(it => it.id === id);
   if (!item) return;
 
-  // 1. Retirar temporalmente del carrito para que lo edites y vuelvas a agregar
   cart = cart.filter(it => it.id !== id);
+  manualDepositRateOverride = false;
   renderCart();
 
-  // 2. Encontrar el producto (por ID nuevo o por nombre en cotizaciones antiguas)
   const prodObj = products.find(p => p.id === item.prodId || p.name === item.productName);
   if (!prodObj) return;
 
@@ -464,13 +467,11 @@ function editCartItem(id) {
   updateTechniquesForProduct(prodObj.id);
   checkIfTextile(prodObj.id);
 
-  // 3. Seleccionar Técnica
   const techObj = techniques.find(t => t.id === item.techId || t.name === item.techniqueName);
   if (techObj) {
     document.getElementById('techniqueSelect').value = techObj.id;
     updateTechniqueVariants(techObj.id);
 
-    // 4. Seleccionar Cobertura / Variante
     const placeSelect = document.getElementById('placementSelect');
     if (item.variantId) {
       placeSelect.value = item.variantId;
@@ -480,7 +481,6 @@ function editCartItem(id) {
     }
   }
 
-  // 5. Restaurar Cantidades (Simples o Tallas Mixtas)
   if (item.isMixedSizes) {
     document.getElementById('mixedSizesCheckbox').checked = true;
     isMixedSizes = true;
@@ -496,29 +496,24 @@ function editCartItem(id) {
     document.getElementById('quantityInput').value = item.qty || 1;
   }
 
-  // 6. Restaurar Arte / Diseño y Margen
   document.getElementById('designSelect').value = item.designValue !== undefined ? String(item.designValue) : "0";
   if (item.marginPercent) {
     document.getElementById('profitMarginInput').value = item.marginPercent;
   }
 
-  // 7. Restaurar estado de ITBMS
   const shouldHaveItbms = item.includeItbms !== undefined ? item.includeItbms : (Number(item.itbmsAmount || 0) > 0);
   if (includeItbms !== shouldHaveItbms) {
     toggleItbms();
   }
 
-  // 8. Restaurar siempre el Precio Unitario exacto con el que se cotizó originalmente
   const qtyVal = Number(item.qty) || 1;
   let savedBaseUnit = null;
 
   if (item.manualPriceOverride !== undefined && item.manualPriceOverride !== null) {
     savedBaseUnit = Number(item.manualPriceOverride);
   } else if (item.subtotalClient !== undefined) {
-    // Calcular el unitario base exacto a partir del subtotal sin ITBMS
     savedBaseUnit = Number(item.subtotalClient) / qtyVal;
   } else if (item.unitClientPrice !== undefined) {
-    // Respaldo para cotizaciones antiguas
     savedBaseUnit = shouldHaveItbms
       ? (Number(item.unitClientPrice) / 1.07)
       : Number(item.unitClientPrice);
@@ -534,19 +529,126 @@ function editCartItem(id) {
   }
 
   calculateAll();
-
-  // Desplazar suavemente hacia la sección 2 para editar
-  document.getElementById('productSelect').scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
 function clearCart() {
   cart = [];
+  manualDepositRateOverride = false;
+  if (document.getElementById('depositRateSelect')) {
+    document.getElementById('depositRateSelect').value = "0.60";
+  }
   renderCart();
+}
+
+// ============================================================================
+// SECCIÓN RETRAÍDA: LOGÍSTICA, URGENCIA Y DESCUENTOS
+// ============================================================================
+function toggleExtrasSection(forceOpen = null) {
+  const body = document.getElementById('extrasSectionBody');
+  const icon = document.getElementById('extrasChevronIcon');
+  if (!body) return;
+
+  const shouldOpen = forceOpen !== null ? forceOpen : body.classList.contains('hidden');
+  if (shouldOpen) {
+    body.classList.remove('hidden');
+    if (icon) icon.style.transform = 'rotate(180deg)';
+  } else {
+    body.classList.add('hidden');
+    if (icon) icon.style.transform = 'rotate(0deg)';
+  }
+}
+
+function updateExtrasAppliedBadge(hasTransport, hasUrgency, hasDiscount) {
+  const badge = document.getElementById('extrasActiveBadge');
+  if (!badge) return;
+  if (hasTransport || hasUrgency || hasDiscount) {
+    badge.classList.remove('hidden');
+  } else {
+    badge.classList.add('hidden');
+  }
+}
+
+function toggleCustomDiscountInput() {
+  const sel = document.getElementById('discountSelect');
+  const box = document.getElementById('customDiscountBox');
+  const label = document.getElementById('customDiscountLabel');
+  if (!sel || !box) return;
+
+  if (sel.value === 'custom_pct') {
+    box.classList.remove('hidden');
+    if (label) label.textContent = 'Porcentaje (%)';
+  } else if (sel.value === 'custom_fixed') {
+    box.classList.remove('hidden');
+    if (label) label.textContent = 'Monto Fijo ($ USD)';
+  } else {
+    box.classList.add('hidden');
+  }
+}
+
+function getCommercialDiscountData(baseAmount) {
+  const sel = document.getElementById('discountSelect');
+  if (!sel || sel.value === '0') {
+    return { discountAmount: 0, label: '' };
+  }
+
+  const customReason = document.getElementById('discountReasonInput')?.value.trim();
+  const customVal = parseFloat(document.getElementById('customDiscountValue')?.value) || 0;
+  let discountAmount = 0;
+  let defaultLabel = 'Descuento Comercial';
+
+  if (sel.value === 'custom_pct') {
+    const pct = Math.min(100, Math.max(0, customVal));
+    discountAmount = baseAmount * (pct / 100);
+    defaultLabel = `Descuento (${pct}%)`;
+  } else if (sel.value === 'custom_fixed') {
+    discountAmount = Math.min(baseAmount, Math.max(0, customVal));
+    defaultLabel = 'Descuento Especial';
+  } else {
+    const rate = parseFloat(sel.value) || 0;
+    discountAmount = baseAmount * rate;
+    defaultLabel = `Descuento (${Math.round(rate * 100)}%)`;
+  }
+
+  const finalLabel = customReason ? `${defaultLabel} • ${customReason}` : defaultLabel;
+  return {
+    discountAmount: Number(discountAmount.toFixed(2)),
+    label: finalLabel
+  };
+}
+
+// ============================================================================
+// PORCENTAJE DE ABONO GLOBAL AUTOMÁTICO (INICIA EN 60% Y CUBRE COSTO TOTAL ÍTEM)
+// ============================================================================
+function handleManualDepositRateChange() {
+  manualDepositRateOverride = true;
+  renderCart();
+}
+
+function getSelectedDepositRate() {
+  const sel = document.getElementById('depositRateSelect');
+  return sel && sel.value ? parseFloat(sel.value) : 0.60;
+}
+
+function updatePdfTermsByRate(depositRate) {
+  const pct = Math.round((depositRate || 0.60) * 100);
+  const rem = 100 - pct;
+  const t1 = document.getElementById('pdfTerm1');
+
+  if (!t1) return;
+
+  if (pct >= 100) {
+    t1.innerHTML = `1. <strong>Forma de Pago:</strong> Este pedido requiere el 100% de pago adelantado para iniciar producción (no reembolsable).`;
+  } else {
+    t1.innerHTML = `1. <strong>Forma de Pago:</strong> Todo pedido requiere el ${pct}% de abono inicial para iniciar producción (no reembolsable) y el ${rem}% restante se cancela contra entrega.`;
+  }
 }
 
 function renderCart() {
   const container = document.getElementById('cartContainer');
   const totalsBox = document.getElementById('cartTotalsBox');
+  const coverageAlert = document.getElementById('depositCoverageAlert');
+  const autoTag = document.getElementById('autoDepositTag');
+  const depSelect = document.getElementById('depositRateSelect');
 
   const transSel = document.getElementById('transportSelect');
   const globalTransport = transSel && transSel.value !== "" ? parseFloat(transSel.value) : 0;
@@ -554,25 +656,32 @@ function renderCart() {
   const globalUrgencyRate = urgSel && urgSel.value !== "" ? parseFloat(urgSel.value) : 0;
 
   if (cart.length === 0) {
-    container.innerHTML = `<p class="text-xs text-slate-500 text-center py-4">Aún no has agregado artículos al pedido formal.</p>`;
+    container.innerHTML = `<p class="text-xs text-slate-500 text-center py-6">Aún no has agregado artículos al pedido formal.</p>`;
     totalsBox.classList.add('hidden');
+    if (coverageAlert) coverageAlert.classList.add('hidden');
+    if (depSelect) depSelect.value = "0.60";
+    if (autoTag) autoTag.textContent = "Base 60%";
+    updateExtrasAppliedBadge(globalTransport > 0, globalUrgencyRate > 0, false);
     return;
   }
 
   totalsBox.classList.remove('hidden');
   let itemsSubtotal = 0;
   let itemsProfit = 0;
+  let sumTotalItemCosts = 0; // Suma de 'Costo Total Ítem' de todas las líneas agregadas
 
   container.innerHTML = cart.map(item => {
     itemsSubtotal += item.finalClientTotal;
     itemsProfit += item.netProfit;
+    sumTotalItemCosts += Number(item.totalInternalCost || 0);
+
     return `
-      <div class="bg-slate-900/90 border border-slate-800 hover:border-cyan-500/40 rounded-xl p-3 flex items-center justify-between gap-2 transition">
-        <div>
-          <p class="text-xs font-bold text-white">${item.qtyText} de ${item.productName}</p>
-          <p class="text-[11px] text-slate-400">${item.techniqueName.split('(')[0]} • $${item.unitClientPrice.toFixed(2)} c/u</p>
+      <div class="bg-slate-900/90 border border-slate-800 hover:border-cyan-500/40 rounded-xl p-2.5 flex items-center justify-between gap-2 transition">
+        <div class="min-w-0">
+          <p class="text-xs font-bold text-white truncate">${item.qtyText} de ${item.productName}</p>
+          <p class="text-[11px] text-slate-400 truncate">${item.techniqueName.split('(')[0]} • $${item.unitClientPrice.toFixed(2)} c/u</p>
         </div>
-        <div class="flex items-center gap-2">
+        <div class="flex items-center gap-1.5 shrink-0">
           <span class="text-sm font-extrabold text-cyan-400 mr-1">$${item.finalClientTotal.toFixed(2)}</span>
           <button onclick="editCartItem(${item.id})" title="Editar este artículo en el configurador"
             class="p-1.5 rounded-lg bg-slate-800 hover:bg-cyan-500/20 text-cyan-400 border border-slate-700 transition">
@@ -610,14 +719,70 @@ function renderCart() {
     urgRow.classList.add('hidden');
   }
 
-  const grandTotal = preUrgencyTotal + urgencyAmount;
-  const totalNetProfit = itemsProfit + urgencyAmount;
+  const subtotalBeforeDiscount = preUrgencyTotal + urgencyAmount;
+  const { discountAmount, label: discountLabel } = getCommercialDiscountData(subtotalBeforeDiscount);
+
+  const discRow = document.getElementById('cartDiscountRow');
+  if (discountAmount > 0 && discRow) {
+    discRow.classList.remove('hidden');
+    document.getElementById('cartDiscountLabel').textContent = `${discountLabel}:`;
+    document.getElementById('cartDiscountCost').textContent = `-$${discountAmount.toFixed(2)}`;
+  } else if (discRow) {
+    discRow.classList.add('hidden');
+  }
+
+  updateExtrasAppliedBadge(globalTransport > 0, urgencyAmount > 0, discountAmount > 0);
+
+  const grandTotal = Math.max(0, subtotalBeforeDiscount - discountAmount);
+
+  // Cálculo automático del porcentaje de abono basado en la suma de 'Costo Total Ítem'
+  let depositRate = getSelectedDepositRate();
+  if (!manualDepositRateOverride && grandTotal > 0) {
+    if (grandTotal * 0.60 >= sumTotalItemCosts) {
+      depositRate = 0.60;
+    } else if (grandTotal * 0.70 >= sumTotalItemCosts) {
+      depositRate = 0.70;
+    } else {
+      depositRate = 1.00;
+    }
+    if (depSelect) depSelect.value = depositRate.toFixed(2);
+  }
+
+  const depositPct = Math.round(depositRate * 100);
+  const depositAmount = grandTotal * depositRate;
+  const totalNetProfit = itemsProfit + urgencyAmount - discountAmount;
+
+  if (autoTag) {
+    autoTag.textContent = manualDepositRateOverride ? `Manual (${depositPct}%)` : `Auto (${depositPct}%)`;
+  }
 
   document.getElementById('cartGrandTotal').textContent = `$${grandTotal.toFixed(2)}`;
-  document.getElementById('cartDepositTotal').textContent = `$${(grandTotal * 0.5).toFixed(2)}`;
+  if (document.getElementById('cartDepositLabel')) {
+    document.getElementById('cartDepositLabel').textContent = depositPct === 100
+      ? `Pago total requerido (100%):`
+      : `Abono requerido (${depositPct}%):`;
+  }
+  document.getElementById('cartDepositTotal').textContent = `$${depositAmount.toFixed(2)}`;
 
   if (document.getElementById('cartTotalProfit')) {
     document.getElementById('cartTotalProfit').textContent = `$${totalNetProfit.toFixed(2)}`;
+  }
+
+  // Indicador de cobertura contra la suma de 'Costo Total Ítem' (visible en Modo Interno)
+  if (coverageAlert) {
+    if (internalMode && sumTotalItemCosts > 0) {
+      coverageAlert.classList.remove('hidden');
+      const diff = depositAmount - sumTotalItemCosts;
+      if (diff >= 0) {
+        coverageAlert.className = "mt-2 text-[11px] px-2.5 py-1.5 rounded-lg border bg-emerald-500/10 border-emerald-500/30 text-emerald-300 flex items-center justify-between gap-2";
+        coverageAlert.innerHTML = `<span>✓ Cubre Costo Total Ítems ($${sumTotalItemCosts.toFixed(2)})</span><span class="font-bold">+$${diff.toFixed(2)}</span>`;
+      } else {
+        coverageAlert.className = "mt-2 text-[11px] px-2.5 py-1.5 rounded-lg border bg-amber-500/10 border-amber-500/40 text-amber-300 flex items-center justify-between gap-2";
+        coverageAlert.innerHTML = `<span>⚠️ Faltan $${Math.abs(diff).toFixed(2)} vs Costo Total ($${sumTotalItemCosts.toFixed(2)})</span><span class="font-bold underline cursor-pointer" onclick="manualDepositRateOverride=false; renderCart();">Auto-ajustar</span>`;
+      }
+    } else {
+      coverageAlert.classList.add('hidden');
+    }
   }
 }
 
@@ -637,6 +802,8 @@ function printQuotePDF() {
   const globalTransport = transSel && transSel.value !== "" ? parseFloat(transSel.value) : 0;
   const urgSel = document.getElementById('urgencySelect');
   const globalUrgencyRate = urgSel && urgSel.value !== "" ? parseFloat(urgSel.value) : 0;
+  const depositRate = getSelectedDepositRate();
+  const depositPct = Math.round(depositRate * 100);
 
   const now = new Date();
   const dateStr = now.toLocaleDateString('es-PA', { year: 'numeric', month: 'long', day: 'numeric' });
@@ -654,8 +821,6 @@ function printQuotePDF() {
   if (document.getElementById('pdfDeliveryDate')) {
     document.getElementById('pdfDeliveryDate').textContent = deliveryVal ? `Entrega estimada: ${deliveryVal}` : '';
   }
-  if (document.getElementById('pdfDepositLabel')) document.getElementById('pdfDepositLabel').textContent = 'Abono 50% para iniciar:';
-  if (document.getElementById('pdfBalanceRow')) document.getElementById('pdfBalanceRow').classList.add('hidden');
 
   let itemsSubtotal = 0;
   const tbody = document.getElementById('pdfTableBody');
@@ -697,11 +862,31 @@ function printQuotePDF() {
     pdfUrgRow.classList.add('hidden');
   }
 
-  const grandTotal = itemsSubtotal + globalTransport + urgencyAmount;
-  const deposit = grandTotal * 0.5;
+  const subtotalBeforeDiscount = itemsSubtotal + globalTransport + urgencyAmount;
+  const { discountAmount, label: discountLabel } = getCommercialDiscountData(subtotalBeforeDiscount);
+
+  const pdfDiscRow = document.getElementById('pdfDiscountRow');
+  if (discountAmount > 0 && pdfDiscRow) {
+    pdfDiscRow.classList.remove('hidden');
+    document.getElementById('pdfDiscountLabel').textContent = `${discountLabel}:`;
+    document.getElementById('pdfDiscountCost').textContent = `-$${discountAmount.toFixed(2)}`;
+  } else if (pdfDiscRow) {
+    pdfDiscRow.classList.add('hidden');
+  }
+
+  const grandTotal = Math.max(0, subtotalBeforeDiscount - discountAmount);
+  const deposit = grandTotal * depositRate;
+
+  updatePdfTermsByRate(depositRate);
 
   if (document.getElementById('pdfGrandTotal')) document.getElementById('pdfGrandTotal').textContent = `$${grandTotal.toFixed(2)}`;
+  if (document.getElementById('pdfDepositLabel')) {
+    document.getElementById('pdfDepositLabel').textContent = depositPct >= 100
+      ? `Pago total requerido (100%):`
+      : `Abono ${depositPct}% para iniciar:`;
+  }
   if (document.getElementById('pdfDeposit')) document.getElementById('pdfDeposit').textContent = `$${deposit.toFixed(2)}`;
+  if (document.getElementById('pdfBalanceRow')) document.getElementById('pdfBalanceRow').classList.add('hidden');
 
   const hasItbms = itemsToPrint.some(item => Number(item.itbmsAmount || 0) > 0 || item.includeItbms === true);
   const itbmsNoteEl = document.getElementById('pdfItbmsNote');
@@ -728,6 +913,8 @@ function copyWhatsAppQuote() {
 
   const urgSel = document.getElementById('urgencySelect');
   const globalUrgencyRate = urgSel && urgSel.value !== "" ? parseFloat(urgSel.value) : 0;
+  const depositRate = getSelectedDepositRate();
+  const depositPct = Math.round(depositRate * 100);
 
   let itemsSubtotal = 0;
   let lines = itemsToQuote.map(item => {
@@ -737,15 +924,21 @@ function copyWhatsAppQuote() {
   }).join('\n\n');
 
   const urgencyAmount = (itemsSubtotal + globalTransport) * globalUrgencyRate;
-  const grandTotal = itemsSubtotal + globalTransport + urgencyAmount;
-  const deposit = grandTotal * 0.5;
+  const subtotalBeforeDiscount = itemsSubtotal + globalTransport + urgencyAmount;
+  const { discountAmount, label: discountLabel } = getCommercialDiscountData(subtotalBeforeDiscount);
+  const grandTotal = Math.max(0, subtotalBeforeDiscount - discountAmount);
+  const deposit = grandTotal * depositRate;
 
   let extraLines = "";
   if (globalTransport > 0) extraLines += `\n🚚 Logística/Transporte: +$${globalTransport.toFixed(2)}`;
   if (urgencyAmount > 0) extraLines += `\n⚡ Recargo Express: +$${urgencyAmount.toFixed(2)}`;
+  if (discountAmount > 0) extraLines += `\n🏷️ *${discountLabel}: -$${discountAmount.toFixed(2)}*`;
 
-  const hasItbms = itemsToQuote.some(item => item.itbmsAmount > 0);
-  const itbmsText = hasItbms ? `\n🧾 _Precios de ítems incluyen ITBMS (7%)_` : '';
+  const hasItbms = itemsToQuote.some(item => Number(item.itbmsAmount || 0) > 0 || item.includeItbms === true);
+  const itbmsText = hasItbms ? `\n🧾 _Precios unitarios ya incluyen ITBMS (7%)_` : '';
+  const depositLine = depositPct >= 100
+    ? `✅ *Pago total adelantado (100%):* $${deposit.toFixed(2)}`
+    : `✅ *Abono ${depositPct}% para iniciar:* $${deposit.toFixed(2)}`;
 
   const text = `*COTIZACIÓN OFICIAL - JNX GRAPHIC* 🎨\n` +
     `👤 *Cliente:* ${client}\n` +
@@ -756,7 +949,7 @@ function copyWhatsAppQuote() {
     `----------------------------------` +
     `${extraLines}\n` +
     `💰 *TOTAL A PAGAR: $${grandTotal.toFixed(2)}*${itbmsText}\n` +
-    `✅ *Abono 50% para iniciar:* $${deposit.toFixed(2)}\n\n` +
+    `${depositLine}\n\n` +
     `_Cotización válida por 7 días. Incluye control de calidad y acabado profesional._`;
 
   navigator.clipboard.writeText(text).then(() => {
@@ -764,7 +957,7 @@ function copyWhatsAppQuote() {
     if (btnText) {
       btnText.textContent = "¡Copiado!";
       setTimeout(() => {
-        btnText.textContent = "Copiar para WhatsApp";
+        btnText.textContent = "WhatsApp";
       }, 2500);
     } else {
       alert("¡Cotización copiada al portapapeles para WhatsApp!");
@@ -790,6 +983,8 @@ function toggleInternalMode() {
     btn.className = "flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition border bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20";
     modeText.textContent = "Modo Cliente (Costos Ocultos)";
   }
+
+  renderCart();
 }
 
 function toggleConfigModal() {
@@ -803,9 +998,7 @@ function toggleConfigModal() {
   }
 }
 
-// RENDERIZADO DEL MODAL EN 3 COLUMNAS ESTILO IMAGEN
 function renderConfigInputs() {
-  // Columna 1: Prendas en Blanco
   document.getElementById('modalProductsConfig').innerHTML = products.map((p, i) => `
     <div class="flex items-center justify-between gap-2.5 bg-slate-950/70 p-2.5 rounded-xl border border-slate-800/90">
       <span class="text-xs font-medium text-slate-300 leading-snug">${p.name}</span>
@@ -817,7 +1010,6 @@ function renderConfigInputs() {
     </div>
   `).join('');
 
-  // Columna 2: Proveedores Externos (Yardas y Hojas)
   document.getElementById('modalSupplierConfig').innerHTML = SUPPLIER_LABELS.map(({ key, label }) => `
     <div class="flex items-center justify-between gap-2.5 bg-slate-950/70 p-2.5 rounded-xl border border-slate-800/90">
       <span class="text-xs font-medium text-slate-300 leading-snug">${label}</span>
@@ -829,7 +1021,6 @@ function renderConfigInputs() {
     </div>
   `).join('');
 
-  // Columna 3: Planchado en Casa
   document.getElementById('modalInHouseConfig').innerHTML = INHOUSE_LABELS.map(({ key, label }) => `
     <div class="flex items-center justify-between gap-2.5 bg-slate-950/70 p-2.5 rounded-xl border border-slate-800/90">
       <span class="text-xs font-medium text-slate-300 leading-snug">${label}</span>
@@ -889,7 +1080,6 @@ function toggleHeaderDropdown() {
   }
 }
 
-// Cerrar el menú automáticamente al hacer clic fuera de él
 document.addEventListener('click', (e) => {
   const wrapper = document.getElementById('headerMenuWrapper');
   const menu = document.getElementById('headerDropdownMenu');
